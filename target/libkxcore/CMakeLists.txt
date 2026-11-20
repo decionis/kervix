@@ -7,5 +7,6 @@ add_library(kxcore STATIC
   src/sha256.c
   src/jcs.c
   src/intent.c
+  src/grant.c
 )
 target_include_directories(kxcore PUBLIC ${PROJECT_SOURCE_DIR}/target/include)

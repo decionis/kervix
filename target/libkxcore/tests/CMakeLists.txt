@@ -15,3 +15,8 @@ add_test(NAME sha256 COMMAND test_sha256)
 add_executable(test_intent test_intent.c)
 target_link_libraries(test_intent PRIVATE kxcore)
 add_test(NAME intent COMMAND test_intent)
+
+add_executable(test_grant test_grant.c default_policy.c)
+target_link_libraries(test_grant PRIVATE kxcore)
+target_compile_options(test_grant PRIVATE -Wno-missing-field-initializers)
+add_test(NAME grant COMMAND test_grant)

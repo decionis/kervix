@@ -3,7 +3,7 @@
 .PHONY: help host asan test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test clean
 
 ARCHES ?= x86_64 aarch64le
-KX_CORE_TESTS = test_catalog test_policy test_sha256 test_intent
+KX_CORE_TESTS = test_catalog test_policy test_sha256 test_intent test_grant
 
 help:
 	@echo "make host            build libkxcore + host tests (native)"
