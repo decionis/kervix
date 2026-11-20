@@ -22,7 +22,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - name: Host TypeScript (bridge, agent, dashboard): typecheck, tests against the fake target, dashboard build
+      - name: "Host TypeScript (bridge, agent, dashboard): typecheck, tests against the fake target, dashboard build"
         run: npm run -s typecheck && npm run -s test:host && npm run -s dashboard
       - name: Codegen is up to date
         run: npm run -s codegen:check

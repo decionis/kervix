@@ -100,11 +100,17 @@ uint16_t kx_grant_issue(kx_grant_table_t *t, const kx_intent_t *in, const uint8_
                         kx_grant_t *out) {
     if (find(t, grant_id) != NULL) return KX_R_GRANT_TABLE_FULL; /* id collision: refuse, never overwrite */
     uint32_t h = home(grant_id);
-    kx_grant_slot_t *slot = NULL;
+    kx_grant_slot_t *slot = NULL, *oldest = NULL;
     for (uint32_t i = 0; i < KX_GRANT_SLOTS; i++) {
         kx_grant_slot_t *s = &t->slots[(h + i) % KX_GRANT_SLOTS];
         if (s->state == KX_SLOT_FREE || s->state == KX_SLOT_DELETED) { slot = s; break; }
+        /* a tombstone whose EFFECT can no longer arrive may be reused if nothing is free */
+        if ((s->state == KX_SLOT_SPENT || s->state == KX_SLOT_EXPIRED) &&
+            now_ns > s->grant.not_after_mono_ns + KX_GRANT_EFFECT_GRACE_NS &&
+            (oldest == NULL || s->forget_after_ns < oldest->forget_after_ns))
+            oldest = s;
     }
+    if (slot == NULL) slot = oldest;               /* never a live (OUTSTANDING) grant */
     if (slot == NULL) return KX_R_GRANT_TABLE_FULL;
 
     kx_grant_t g;

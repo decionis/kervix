@@ -25,11 +25,18 @@
 #include "kervix/abi.h"
 #include "kervix/policy.h"
 
-#define KX_GRANT_SLOTS         512u
+#define KX_GRANT_SLOTS         1024u
 #define KX_GRANT_KEY_LEN       32u
 /* Spent/expired grants are remembered this long past their deadline so a
  * replay is reported precisely (SPENT) rather than as UNKNOWN. */
 #define KX_GRANT_TOMBSTONE_NS  (60ull * 1000000000ull)
+/* When the table is full, a tombstone more than this far past its grant's
+ * deadline may be reused (oldest first). Live grants are never evicted, and a
+ * just-spent grant keeps its slot until the actuator's EFFECT can no longer
+ * arrive. A replay of an evicted grant is still refused: GRANT_UNKNOWN instead
+ * of GRANT_SPENT. Without this, a burst of KX_GRANT_SLOTS grants per minute
+ * would lock out every later grant (found by kx-bench). */
+#define KX_GRANT_EFFECT_GRACE_NS (1000ull * 1000000ull)
 
 /* Executor identity as stamped by the kernel on the message that carried the
  * EXECUTE request (ctp->info: pid + secpol type id). */
