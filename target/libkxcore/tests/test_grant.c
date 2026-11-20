@@ -2,7 +2,7 @@
  * randomized sweep proving no grant is ever redeemed twice. */
 #include <string.h>
 
-#include "default_policy.h"
+#include "kervix/policy.h"
 #include "kervix/grant.h"
 #include "kx_test.h"
 
@@ -120,7 +120,7 @@ static void test_unknown_and_expiry(void) {
     KX_CHECK(redeem(&g, &in, AGENT, T0 + 250 * MS, &tel) == KX_R_OK);            /* deadline inclusive */
     kx_grant_t late = issue(5, &in, 250, T0);
     KX_CHECK(redeem(&late, &in, AGENT, T0 + 251 * MS, &tel) == KX_R_GRANT_EXPIRED);
-    KX_CHECK(redeem(&late, &in, AGENT, T0 + 252 * MS, &tel) == KX_R_GRANT_SPENT); /* consumed */
+    KX_CHECK(redeem(&late, &in, AGENT, T0 + 252 * MS, &tel) == KX_R_GRANT_EXPIRED); /* consumed, still "expired" */
 
     /* reaper: expires outstanding grants, reports their ids, later forgets tombstones */
     kx_grant_t a = issue(6, &in, 100, T0);
@@ -128,7 +128,8 @@ static void test_unknown_and_expiry(void) {
     uint8_t ids[4][16];
     KX_CHECK(kx_grant_reap(&T, T0 + 500 * MS, ids, 4) == 1);
     KX_CHECK(memcmp(ids[0], a.grant_id, 16) == 0);
-    KX_CHECK(redeem(&a, &in, AGENT, T0 + 501 * MS, &tel) == KX_R_GRANT_SPENT);
+    /* regression (found on QNX): a grant reaped before presentation is EXPIRED, not SPENT */
+    KX_CHECK(redeem(&a, &in, AGENT, T0 + 501 * MS, &tel) == KX_R_GRANT_EXPIRED);
     KX_CHECK(redeem(&b, &in, AGENT, T0 + 501 * MS, &tel) == KX_R_OK);
     kx_grant_reap(&T, T0 + 100 * MS + KX_GRANT_TOMBSTONE_NS + 1, NULL, 0);
     KX_CHECK(redeem(&a, &in, AGENT, T0 + KX_GRANT_TOMBSTONE_NS + 200 * MS, &tel) == KX_R_GRANT_UNKNOWN);
@@ -252,7 +253,7 @@ static void test_never_twice(void) {
 }
 
 int main(void) {
-    KX_CHECK(kx_test_build_default_policy(&POL) == 0);
+    KX_CHECK(kx_policy_build_default(&POL) == 0);
     test_happy_and_replay();
     test_forgery();
     test_unknown_and_expiry();

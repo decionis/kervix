@@ -1,6 +1,6 @@
 # Kervix top-level shortcuts. Host targets run natively. QNX targets run in
 # the qnx-build container (docker/qnx-build.sh), which works on macOS and Linux.
-.PHONY: help host asan test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim tsan clean
+.PHONY: help host asan test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 tsan clean
 
 ARCHES ?= x86_64 aarch64le
 KX_CORE_TESTS = libkxcore/tests/test_catalog libkxcore/tests/test_policy libkxcore/tests/test_sha256 \
@@ -18,6 +18,7 @@ help:
 	@echo "make qemu-start      boot it headless on this machine (ssh on localhost:2222)"
 	@echo "make target-test     cross-build, copy and run libkxcore tests ON QNX (QEMU)"
 	@echo "make target-vsim     vsimd + kxctl acceptance test on QNX"
+	@echo "make target-m1       authority MVP acceptance (propose/grant/redeem/attacks) on QNX"
 	@echo "make qemu-stop       stop the VM"
 
 node_modules: package.json package-lock.json
@@ -84,6 +85,10 @@ target-test: target-x86_64
 # vsimd + kxctl acceptance on QNX (16 checks)
 target-vsim:
 	tests/target/vsim.sh
+
+# M1 authority MVP acceptance on QNX: vsimd + kervixd + sdv_actuatord + kxctl
+target-m1:
+	tests/target/m1.sh
 
 clean:
 	rm -rf build

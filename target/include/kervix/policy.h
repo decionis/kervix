@@ -137,4 +137,11 @@ int  kx_policy_add_pred(kx_policy_t *pol, kx_pred_t pred);   /* appends; returns
 int  kx_policy_add_rule(kx_policy_t *pol, const kx_rule_t *rule);
 int  kx_policy_finalize(kx_policy_t *pol);                    /* validates + builds the action index */
 
+/* SHA-256 over a canonical little-endian serialization of a FINALIZED policy
+ * (domain "kervix.policy/1"). Every grant and capsule binds to this value. */
+void kx_policy_hash(const kx_policy_t *pol, uint8_t out[32]);
+
+/* Built-in demo policy (mirrors policies/default.yaml); finalized and hashed. */
+int  kx_policy_build_default(kx_policy_t *pol);
+
 #endif /* KERVIX_POLICY_H */

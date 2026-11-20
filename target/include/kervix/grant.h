@@ -33,12 +33,11 @@
 
 /* Executor identity as stamped by the kernel on the message that carried the
  * EXECUTE request (ctp->info: pid + secpol type id). */
-typedef struct {
-    uint32_t type_id;
-    int32_t  pid;
-} kx_client_t;
+typedef kx_client_id_t kx_client_t;
 
-typedef enum { KX_SLOT_FREE = 0, KX_SLOT_OUTSTANDING, KX_SLOT_SPENT, KX_SLOT_DELETED } kx_slot_state_t;
+/* SPENT and EXPIRED are tombstones kept for the grace period so a late
+ * presentation is reported precisely (replay vs. too late). */
+typedef enum { KX_SLOT_FREE = 0, KX_SLOT_OUTSTANDING, KX_SLOT_SPENT, KX_SLOT_DELETED, KX_SLOT_EXPIRED } kx_slot_state_t;
 
 typedef struct {
     uint8_t     state;          /* kx_slot_state_t */

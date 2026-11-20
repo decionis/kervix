@@ -76,7 +76,7 @@ static kx_grant_slot_t *find(kx_grant_table_t *t, const uint8_t id[16]) {
     for (uint32_t i = 0; i < KX_GRANT_SLOTS; i++) {
         kx_grant_slot_t *s = &t->slots[(h + i) % KX_GRANT_SLOTS];
         if (s->state == KX_SLOT_FREE) return NULL;          /* end of probe chain */
-        if ((s->state == KX_SLOT_OUTSTANDING || s->state == KX_SLOT_SPENT) &&
+        if ((s->state == KX_SLOT_OUTSTANDING || s->state == KX_SLOT_SPENT || s->state == KX_SLOT_EXPIRED) &&
             memcmp(s->grant.grant_id, id, 16) == 0) {
             return s;
         }
@@ -129,6 +129,10 @@ static void consume(kx_grant_table_t *t, kx_grant_slot_t *s) {
     s->state = KX_SLOT_SPENT;
     if (t->outstanding > 0) t->outstanding--;
 }
+static void expire(kx_grant_table_t *t, kx_grant_slot_t *s) {
+    s->state = KX_SLOT_EXPIRED;
+    if (t->outstanding > 0) t->outstanding--;
+}
 
 uint16_t kx_grant_redeem(kx_grant_table_t *t, const kx_grant_t *presented, const kx_intent_t *command,
                          kx_client_t presenter, uint64_t now_ns, const kx_policy_t *pol,
@@ -142,9 +146,10 @@ uint16_t kx_grant_redeem(kx_grant_table_t *t, const kx_grant_t *presented, const
     kx_grant_slot_t *s = find(t, presented->grant_id);
     if (s == NULL) return KX_R_GRANT_UNKNOWN;
     if (s->state == KX_SLOT_SPENT) return KX_R_GRANT_SPENT;
+    if (s->state == KX_SLOT_EXPIRED) return KX_R_GRANT_EXPIRED;   /* reaped before presentation */
 
     /* From here on every outcome consumes the grant (fail-closed). */
-    if (now_ns > s->grant.not_after_mono_ns) { consume(t, s); return KX_R_GRANT_EXPIRED; }
+    if (now_ns > s->grant.not_after_mono_ns) { expire(t, s); return KX_R_GRANT_EXPIRED; }
 
     uint8_t cmd[32];
     kx_params_digest(command, cmd);
@@ -171,8 +176,8 @@ uint32_t kx_grant_reap(kx_grant_table_t *t, uint64_t now_ns, uint8_t (*expired_i
         if (s->state == KX_SLOT_OUTSTANDING && now_ns > s->grant.not_after_mono_ns) {
             if (expired_ids != NULL && n < max) memcpy(expired_ids[n], s->grant.grant_id, 16);
             n++;
-            consume(t, s);
-        } else if (s->state == KX_SLOT_SPENT && now_ns > s->forget_after_ns) {
+            expire(t, s);
+        } else if ((s->state == KX_SLOT_SPENT || s->state == KX_SLOT_EXPIRED) && now_ns > s->forget_after_ns) {
             s->state = KX_SLOT_DELETED; /* keeps probe chains intact */
         }
     }

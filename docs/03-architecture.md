@@ -118,6 +118,8 @@ allow kervix_t self:ability { settypeid:kervix_run_t };
 
 ## 4. IPC protocol (devctl on resource-manager nodes)
 
+> **Implemented in M1:** `kervix/kervix_abi.h`, `kervixd`, `sdv_actuatord` and `kxctl propose|execute|stats`. Acceptance is `tests/target/m1.sh` (16/16 on QNX 8.0). Escalation resolution (`/dev/kervix/escalations`), `/dev/kervix/dossier` and `/dev/kervix/policy` come with their milestones.
+
 All messages are **fixed-size C structs** (no parsing on the hot path), versioned with a `u16 abi`. The gateway converts JSON to structs. `libkervix` wraps everything.
 
 ```c

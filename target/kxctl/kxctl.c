@@ -6,8 +6,20 @@
  *                                   sequence order, freshness and K2 plausibility
  *   kxctl sim <command words...>    send a command to /dev/sdv/sim/ctl
  *   kxctl sim-apply <action> [k=v]  apply an actuation effect via /dev/sdv/sim/actuate
+ *   kxctl propose [opts] <action> [k=v...]   ask Kervix; prints the decision
+ *        --actor ID       actor id (default "agent:kxctl")
+ *        --exec           execute the granted command via /dev/sdv/actuators
+ *        --replay         execute a second time with the same grant (must be SPENT)
+ *        --delay-ms N     wait before executing (expiry tests)
+ *        --sim "CMD"      send a simulator command between grant and execution (TOCTOU tests)
+ *        --forge          flip one bit of the grant MAC before executing
+ *        --mutate k=v     execute a different parameter value than was granted
+ *        --save-grant F   write grant+command to F (for `kxctl execute` from another process)
+ *   kxctl execute --grant F         present a saved grant (a DIFFERENT process: binding test)
+ *   kxctl stats                     authority counters + PROPOSE latency histogram
  *
- * Exit status: 0 ok, 1 check/command failed, 2 usage/IO error.
+ * Exit status: 0 ok/ALLOW/executed, 1 check failed or execution refused,
+ *              2 usage/IO error, 3 ESCALATE, 4 BLOCK.
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -20,9 +32,14 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "kervix/kervix_abi.h"
 #include "kervix/policy.h"
 #include "kervix/seqlock.h"
 #include "kervix/vsim_abi.h"
+
+static int usage(void);
+static int parse_action(int argc, char **argv, kx_intent_t *in);
+static int cmd_sim(int argc, char **argv);
 
 static uint64_t now_ns(void) {
     struct timespec ts;
@@ -179,9 +196,152 @@ static int cmd_sim_apply(int argc, char **argv) {
     return 0;
 }
 
+
+static const char *rname(uint16_t r) {
+    const kx_reason_spec_t *s = kx_catalog_reason(r);
+    return s ? s->name : "?";
+}
+static const char *rtext(uint16_t r) {
+    const kx_reason_spec_t *s = kx_catalog_reason(r);
+    return s ? s->text : "";
+}
+static void hexs(const uint8_t *b, size_t n, char *out) { for (size_t i = 0; i < n; i++) snprintf(out + 2 * i, 3, "%02x", b[i]); }
+
+static int random_uuid(uint8_t u[16]) {
+    int fd = open("/dev/urandom", O_RDONLY);
+    if (fd == -1 || read(fd, u, 16) != 16) { if (fd != -1) close(fd); return -1; }
+    close(fd);
+    u[6] = (uint8_t)((u[6] & 0x0f) | 0x40); /* v4 */
+    u[8] = (uint8_t)((u[8] & 0x3f) | 0x80); /* RFC 4122 variant */
+    return 0;
+}
+
+static uint16_t execute_req(const kx_grant_t *g, const kx_intent_t *cmd) {
+    int fd = open(KX_PATH_ACTUATORS, O_RDWR);
+    if (fd == -1) { fprintf(stderr, "kxctl: %s: %s\n", KX_PATH_ACTUATORS, strerror(errno)); return KX_R_AUTHORITY_UNAVAILABLE; }
+    kx_execute_req_t rq;
+    memset(&rq, 0, sizeof rq);
+    rq.grant = *g;
+    rq.command = *cmd;
+    int ret = -1;
+    int rc = devctl(fd, KX_DCMD_EXECUTE, &rq, sizeof rq, &ret);
+    close(fd);
+    return rc == EOK ? (uint16_t)ret : KX_R_AUTHORITY_UNAVAILABLE;
+}
+
+static int report_exec(const char *label, uint16_t r) {
+    printf("%-8s %s%s%s\n", label, r == KX_R_OK ? "EXECUTED" : "REFUSED ", r == KX_R_OK ? "" : "  ", r == KX_R_OK ? "" : rname(r));
+    if (r != KX_R_OK) printf("         %s\n", rtext(r));
+    return r == KX_R_OK ? 0 : 1;
+}
+
+static int cmd_propose(int argc, char **argv) {
+    const char *actor = "agent:kxctl", *sim = NULL, *save = NULL, *mutate = NULL;
+    int exec = 0, replay = 0, forge = 0;
+    long delay_ms = 0;
+    int i = 0;
+    for (; i < argc && strncmp(argv[i], "--", 2) == 0; i++) {
+        if (!strcmp(argv[i], "--exec")) exec = 1;
+        else if (!strcmp(argv[i], "--replay")) exec = replay = 1;
+        else if (!strcmp(argv[i], "--forge")) exec = forge = 1;
+        else if (!strcmp(argv[i], "--actor") && i + 1 < argc) actor = argv[++i];
+        else if (!strcmp(argv[i], "--delay-ms") && i + 1 < argc) { delay_ms = atol(argv[++i]); exec = 1; }
+        else if (!strcmp(argv[i], "--sim") && i + 1 < argc) { sim = argv[++i]; exec = 1; }
+        else if (!strcmp(argv[i], "--mutate") && i + 1 < argc) { mutate = argv[++i]; exec = 1; }
+        else if (!strcmp(argv[i], "--save-grant") && i + 1 < argc) save = argv[++i];
+        else { fprintf(stderr, "kxctl: unknown option %s\n", argv[i]); return 2; }
+    }
+    if (i >= argc) return usage();
+    kx_intent_t in;
+    if (parse_action(argc - i, argv + i, &in) != 0) return 2;
+    snprintf(in.actor_id, sizeof in.actor_id, "%s", actor);
+    if (random_uuid(in.intent_id) != 0) { perror("kxctl: /dev/urandom"); return 2; }
+
+    int fd = open(KX_PATH_INTENT, O_RDWR);
+    if (fd == -1) { fprintf(stderr, "kxctl: %s: %s (is kervixd running?)\n", KX_PATH_INTENT, strerror(errno)); return 2; }
+    union { kx_intent_t in; kx_decision_t d; } u;
+    memset(&u, 0, sizeof u);
+    u.in = in;
+    uint64_t t0 = now_ns();
+    int rc = devctl(fd, KX_DCMD_PROPOSE, &u, sizeof u.d, NULL);
+    uint64_t rtt = now_ns() - t0;
+    close(fd);
+    if (rc != EOK) { fprintf(stderr, "kxctl: PROPOSE: %s\n", strerror(rc)); return 2; }
+    kx_decision_t d = u.d;
+    const char *v = d.verdict == KX_VERDICT_ALLOW ? "ALLOW" : d.verdict == KX_VERDICT_ESCALATE ? "ESCALATE" : "BLOCK";
+    char ih[65], gh[33];
+    hexs(d.intent_hash, 32, ih);
+    printf("%-8s %s  rule=%s  reason=%s\n", v, argv[i], d.rule_id[0] ? d.rule_id : "-", rname(d.reason));
+    printf("         %s\n", rtext(d.reason));
+    printf("         intent sha256:%.16s…  telemetry seq %llu  eval %.1f us  round-trip %.1f us\n", ih,
+           (unsigned long long)d.telemetry_seq, d.eval_ns / 1e3, rtt / 1e3);
+    if (d.verdict == KX_VERDICT_ESCALATE) printf("         escalation #%u awaiting the driver\n", d.escalation_id);
+    if (d.verdict != KX_VERDICT_ALLOW) return d.verdict == KX_VERDICT_ESCALATE ? 3 : 4;
+
+    hexs(d.grant.grant_id, 16, gh);
+    printf("         grant %s…  ttl %llu ms  single-use\n", gh,
+           (unsigned long long)((d.grant.not_after_mono_ns - d.grant.issued_mono_ns) / 1000000u));
+    if (save) {
+        FILE *f = fopen(save, "wb");
+        kx_execute_req_t rq;
+        memset(&rq, 0, sizeof rq);
+        rq.grant = d.grant;
+        rq.command = in;
+        if (f == NULL || fwrite(&rq, sizeof rq, 1, f) != 1) { perror("kxctl: save-grant"); return 2; }
+        fclose(f);
+    }
+    if (!exec) return 0;
+    if (sim) {
+        char simline[128];
+        snprintf(simline, sizeof simline, "%s", sim);
+        char *words[8]; int nw = 0;
+        for (char *t = strtok(simline, " "); t && nw < 8; t = strtok(NULL, " ")) words[nw++] = t;
+        if (cmd_sim(nw, words) != 0) return 2;
+    }
+    if (delay_ms > 0) usleep((useconds_t)delay_ms * 1000u);
+    kx_grant_t g = d.grant;
+    kx_intent_t cmd = in;
+    if (forge) g.mac[7] ^= 0x01;
+    if (mutate) {
+        char m[64];
+        snprintf(m, sizeof m, "%s", mutate);
+        char *argv2[2] = { argv[i], m };
+        kx_intent_t alt;
+        if (parse_action(2, argv2, &alt) != 0 || alt.n_params != 1) return 2;
+        for (int k = 0; k < cmd.n_params; k++) if (cmd.p[k].key == alt.p[0].key) cmd.p[k].val = alt.p[0].val;
+    }
+    int r1 = report_exec("execute", execute_req(&g, &cmd));
+    if (!replay) return r1;
+    return report_exec("replay", execute_req(&g, &cmd)) == 0 ? 1 : r1; /* a replay that executes is a failure */
+}
+
+static int cmd_execute(int argc, char **argv) {
+    if (argc != 2 || strcmp(argv[0], "--grant")) return usage();
+    FILE *f = fopen(argv[1], "rb");
+    kx_execute_req_t rq;
+    if (f == NULL || fread(&rq, sizeof rq, 1, f) != 1) { perror("kxctl: --grant"); return 2; }
+    fclose(f);
+    return report_exec("execute", execute_req(&rq.grant, &rq.command));
+}
+
+static int cmd_stats(void) {
+    int fd = open(KX_PATH_STATS, O_RDONLY);
+    if (fd == -1) { fprintf(stderr, "kxctl: %s: %s\n", KX_PATH_STATS, strerror(errno)); return 2; }
+    char buf[4096];
+    ssize_t n = read(fd, buf, sizeof buf - 1);
+    close(fd);
+    if (n < 0) return 2;
+    buf[n] = '\0';
+    fputs(buf, stdout);
+    return 0;
+}
+
 static int usage(void) {
     fprintf(stderr, "usage:\n  kxctl telemetry [--watch <seconds>]\n  kxctl sim <command...>   (kxctl sim help)\n"
-                    "  kxctl sim-apply <action> [key=value...]\n");
+                    "  kxctl sim-apply <action> [key=value...]\n"
+                    "  kxctl propose [--exec|--replay|--forge|--delay-ms N|--sim CMD|--mutate k=v|--save-grant F|--actor ID]\n"
+                    "                <action> [key=value...]\n"
+                    "  kxctl execute --grant F\n  kxctl stats\n");
     return 2;
 }
 
@@ -195,5 +355,8 @@ int main(int argc, char **argv) {
     }
     if (!strcmp(argv[1], "sim") && argc >= 3) return cmd_sim(argc - 2, argv + 2);
     if (!strcmp(argv[1], "sim-apply") && argc >= 3) return cmd_sim_apply(argc - 2, argv + 2);
+    if (!strcmp(argv[1], "propose") && argc >= 3) return cmd_propose(argc - 2, argv + 2);
+    if (!strcmp(argv[1], "execute")) return cmd_execute(argc - 2, argv + 2);
+    if (!strcmp(argv[1], "stats")) return cmd_stats();
     return usage();
 }
