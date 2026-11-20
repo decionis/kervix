@@ -32,3 +32,11 @@ These notes are the gotchas found while building Kervix. Each one becomes a call
 - `verify_oneshot` reports the result in `*status`: 1 = valid, 0 = invalid. Its return code only signals API errors.
 - Ed25519 is deterministic, so a published vector (RFC 8032 key + COSE Sig_structure) is a byte-exact test of the whole pipeline.
 
+## Boot-time services (S4)
+- mkqnximage reads `local/snippets/*.custom` from its working directory:
+  - `system_files.custom` uses lines like `[perms=0755] bin/kervix/s4_gw=/abs/host/path` and installs to `/system/bin/kervix/s4_gw`.
+  - `post_start.custom` holds commands run at the end of boot.
+- Snippets are preprocessed, so `#if defined(OPT_SECPOL_no)` works for writing policy-aware start lines.
+- Start each service with `on -T <type> -p <prio> <cmd> &`. Types and priorities are applied before `main()`, and the process can confirm both with `secpol_type_id()` and `pthread_getschedparam()`.
+- QEMU user networking (`-netdev user,hostfwd=tcp:127.0.0.1:7301-:7301`) is enough for host ⇄ target TCP. No bridge or tap is needed, so it works on macOS.
+

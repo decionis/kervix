@@ -1,0 +1,2 @@
+# Kervix S4 spike: gateway stand-in installed into the system partition
+[perms=0755] bin/kervix/s4_gw=/work/build/qnx-x86_64/spikes/s4-boot/s4_gw
