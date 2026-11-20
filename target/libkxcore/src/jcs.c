@@ -95,6 +95,12 @@ void kx_jw_int(kx_jw_t *w, int64_t v) {
 }
 void kx_jw_bool(kx_jw_t *w, int v) { pre_value(w, 0); if (!w->err) put(w, v ? "true" : "false", v ? 4 : 5); }
 void kx_jw_null(kx_jw_t *w) { pre_value(w, 0); if (!w->err) put(w, "null", 4); }
+void kx_jw_raw(kx_jw_t *w, const char *json, size_t n) {
+    pre_value(w, 0);
+    if (w->err) return;
+    if (n == 0) { w->err = 1; return; }
+    put(w, json, n);
+}
 
 int kx_jw_ok(kx_jw_t *w) {
     if (w->err || w->depth != 0 || w->after_key || w->len == 0) return 0;

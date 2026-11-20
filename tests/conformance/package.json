@@ -5,7 +5,8 @@
   "license": "Apache-2.0",
   "description": "Cross-implementation checks: libkxcore (C) vs the published @decionis/verify",
   "scripts": {
-    "intent": "node intent-parity.mjs"
+    "intent": "node intent-parity.mjs",
+    "capsule": "node capsule-parity.mjs"
   },
   "dependencies": {
     "@decionis/verify": "0.5.0"

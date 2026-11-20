@@ -20,3 +20,7 @@ add_executable(test_grant test_grant.c)
 target_link_libraries(test_grant PRIVATE kxcore)
 target_compile_options(test_grant PRIVATE -Wno-missing-field-initializers)
 add_test(NAME grant COMMAND test_grant)
+
+add_executable(test_capsule test_capsule.c)
+target_link_libraries(test_capsule PRIVATE kxcore)
+add_test(NAME capsule COMMAND test_capsule)

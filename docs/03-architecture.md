@@ -340,6 +340,16 @@ Every lifecycle event produces one capsule. Common members:
   - `verdict`, `reason`, `rule_id`, `intent_hash`, `policy_hash`, the telemetry snapshot (integers), `grant_id`, `eval_ns`, `ledger_seq`.
 - `follows` and `vehicle.*` are registered upstream by U1 (`@decionis/verify` ≥ 0.6.0). Before U1 they produce `info` findings only.
 - Reference implementation and executable proof: `spikes/s5-aac/s5.mjs` (`npm run spike:s5`).
+- **Implemented in C (M2):** `kervix/capsule.h` (`kx_capsule_build`, two-pass: identity from the preimage, then the final capsule) and `kervix/cose.h` (envelope template, base64url). `tests/conformance/capsule-parity.mjs` checks 17 capsules covering every event and chain relation against `@decionis/verify`, for capsules built on the host **and on QNX** (byte-identical).
+- **`evidence.kervix` schema** (all integers or ASCII; keys sorted):
+  - `approver?`, `client_pid`, `client_type`.
+  - `env{ledger_ok, max_age_ns, now_mono_ns, now_rt_ms}` (DECISION only).
+  - `escalation_id?`, `eval_ns`, `event`, `gate`, `grant_id?`.
+  - `intent{action, actor, captured_at_ms, expires_at_ms, intent_id, parameters{…}}`, `intent_hash`.
+  - `ledger_seq`, `policy_hash`, `quarantined_bytes` (EPOCH), `reason`, `rule_id?`.
+  - `telemetry{<every field>, mono_ns, seq}`, `verdict`.
+- **The constraint's `evidence_digest` = sha256(JCS(evidence.kervix)).**
+- **Replay:** `kx_capsule_replay()` re-runs `kx_eval` on (`intent`, `telemetry`, `env`) from the evidence. All recorded decisions reproduce their verdict, reason and rule (tests).
 
 ### 8.3 Producer envelope
 

@@ -38,6 +38,8 @@ void kx_jw_strn(kx_jw_t *w, const char *s, size_t n);
 void kx_jw_int(kx_jw_t *w, int64_t v);
 void kx_jw_bool(kx_jw_t *w, int v);
 void kx_jw_null(kx_jw_t *w);
+/* Embed an already-canonical JSON value verbatim (caller guarantees it is JCS). */
+void kx_jw_raw(kx_jw_t *w, const char *json, size_t n);
 /* 1 if no error and all containers are closed; NUL-terminates the buffer. */
 int  kx_jw_ok(kx_jw_t *w);
 
