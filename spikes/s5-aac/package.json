@@ -1,0 +1,13 @@
+{
+  "name": "@kervix/spike-s5-aac",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Spike S5: Kervix-shaped AAC draft-04 capsules + COSE_Sign1 producer envelopes verified by the published @decionis/verify",
+  "scripts": {
+    "start": "node s5.mjs"
+  },
+  "dependencies": {
+    "@decionis/verify": "0.5.0"
+  }
+}

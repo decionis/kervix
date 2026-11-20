@@ -1,0 +1,26 @@
+# build outputs
+/build/
+/build-*/
+/out/
+node_modules/
+dist/
+*.o
+*.a
+*.so
+# QNX images / local VM state
+/vm/
+*.ifs
+*.vmdk
+*.qcow2
+# secrets & keys — generated at first boot / locally, never committed
+keys/
+*.pem
+*.key
+.env
+.env.*
+# editors / OS
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/

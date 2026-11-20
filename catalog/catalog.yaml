@@ -1,0 +1,179 @@
+# Kervix catalog: the SINGLE SOURCE OF TRUTH for the action vocabulary,
+# telemetry fields and reason codes. `npm run codegen` generates:
+#   target/include/kervix/catalog_gen.h   (C enums, tables, kx_telemetry_t)
+#   host/shared/src/catalog.gen.ts        (TS constants and types)
+#   host/shared/tools.gen.json            (Claude/MCP tool schemas, strict)
+# Generated files are committed, so the QNX build never needs Node.
+#
+# Rules:
+#  - All numbers are integers (AAC draft-04 forbids non-integers in digests).
+#    Units are encoded in field names: *_dkph = km/h x10, *_dpct = % x10,
+#    *_dc = deci-degree C (°C x10), *_s = seconds, *_pct = percent.
+#  - IDs are append-only. Never renumber or reuse an id, because recorded
+#    dossiers depend on them.
+#  - `vss` paths target COVESA VSS 4.x. `vss: null` marks a Kervix extension
+#    signal (name under the Kervix.* branch).
+
+version: 1
+
+enums:
+  gear:        [P, R, N, D]                       # Vehicle.Powertrain.Transmission.SelectedGear (subset)
+  ecu:         [brake, powertrain, adas, bms, infotainment]
+  window:      [front_left, front_right, rear_left, rear_right]
+  door:        [front_left, front_right, rear_left, rear_right]
+  recipient:   [emergency_contact, fleet_operator, roadside_assist]
+  ota_state:   [idle, flashing, failed]
+
+telemetry:
+  # name:            { ctype, vss | null, min, max, [enum], note }
+  speed_dkph:        { ctype: int32, vss: Vehicle.Speed, min: 0, max: 3000 }
+  gear:              { ctype: uint8, vss: Vehicle.Powertrain.Transmission.SelectedGear, enum: gear }
+  park_brake:        { ctype: uint8, vss: Vehicle.Chassis.ParkingBrake.IsEngaged, min: 0, max: 1 }
+  soc_dpct:          { ctype: int16, vss: Vehicle.Powertrain.TractionBattery.StateOfCharge.Current, min: 0, max: 1000 }
+  charging:          { ctype: uint8, vss: Vehicle.Powertrain.TractionBattery.Charging.IsCharging, min: 0, max: 1 }
+  driver_present:    { ctype: uint8, vss: Vehicle.Cabin.Seat.Row1.DriverSide.IsOccupied, min: 0, max: 1 }
+  service_mode:      { ctype: uint8, vss: null, min: 0, max: 1, note: "Kervix.Service.IsActive — workshop session authenticated" }
+  doors_locked_mask: { ctype: uint8, vss: null, min: 0, max: 15, note: "bit i = Vehicle.Cabin.Door.<i>.IsLocked" }
+  hvac_setpoint_dc:  { ctype: int16, vss: Vehicle.Cabin.HVAC.Station.Row1.Driver.Temperature, min: 160, max: 280 }
+  window_fl_pct:     { ctype: uint8, vss: Vehicle.Cabin.Door.Row1.DriverSide.Window.Position, min: 0, max: 100 }
+  window_fr_pct:     { ctype: uint8, vss: Vehicle.Cabin.Door.Row1.PassengerSide.Window.Position, min: 0, max: 100 }
+  window_rl_pct:     { ctype: uint8, vss: Vehicle.Cabin.Door.Row2.DriverSide.Window.Position, min: 0, max: 100 }
+  window_rr_pct:     { ctype: uint8, vss: Vehicle.Cabin.Door.Row2.PassengerSide.Window.Position, min: 0, max: 100 }
+  hazard_on:         { ctype: uint8, vss: Vehicle.Body.Lights.Hazard.IsSignaling, min: 0, max: 1 }
+  acc_target_kph:    { ctype: int16, vss: Vehicle.ADAS.CruiseControl.SpeedSet, min: 0, max: 200 }
+  charge_limit_pct:  { ctype: uint8, vss: Vehicle.Powertrain.TractionBattery.Charging.ChargeLimit, min: 50, max: 100 }
+  immobilizer_on:    { ctype: uint8, vss: null, min: 0, max: 1, note: "Kervix.Security.Immobilizer.IsEngaged" }
+  location_shared:   { ctype: uint8, vss: null, min: 0, max: 1, note: "Kervix.Privacy.LocationSharing.IsActive" }
+  ota_state:         { ctype: uint8, vss: null, enum: ota_state, note: "Kervix.OTA.State" }
+
+# Irreversibility classes come from the AAC draft-04 registry.
+# safety: qm = comfort/convenience; safety = may affect vehicle motion or
+# integrity. Constitution K1 blocks every action that is not
+# (two_way AND qm) when telemetry is stale.
+actions:
+  - id: 1
+    name: cabin.climate.set
+    summary: Set the driver-zone cabin temperature.
+    irreversibility: two_way
+    safety: qm
+    params:
+      temp_dc: { type: int, min: 160, max: 280, doc: "Target temperature in 0.1 °C (160 = 16.0 °C)" }
+
+  - id: 2
+    name: cabin.window.set
+    summary: Move one window to a position.
+    irreversibility: two_way
+    safety: qm
+    params:
+      window:  { type: enum, enum: window }
+      pos_pct: { type: int, min: 0, max: 100, doc: "0 = closed, 100 = fully open" }
+
+  - id: 3
+    name: body.door.unlock
+    summary: Unlock one door.
+    irreversibility: two_way
+    safety: safety
+    params:
+      door: { type: enum, enum: door }
+
+  - id: 4
+    name: light.hazard.set
+    summary: Turn the hazard lights on or off.
+    irreversibility: two_way
+    safety: qm
+    params:
+      on: { type: bool }
+
+  - id: 5
+    name: adas.acc.set_speed
+    summary: Change the adaptive-cruise-control set speed.
+    irreversibility: two_way
+    safety: safety
+    params:
+      target_kph: { type: int, min: 30, max: 200 }
+
+  - id: 6
+    name: battery.charge_limit.set
+    summary: Set the maximum state-of-charge for charging.
+    irreversibility: two_way
+    safety: qm
+    params:
+      pct: { type: int, min: 50, max: 100 }
+
+  - id: 7
+    name: telematics.location.share
+    summary: Share live vehicle location with a recipient for a duration.
+    irreversibility: one_way_recoverable
+    safety: qm
+    privacy: true
+    params:
+      recipient:  { type: enum, enum: recipient }
+      duration_s: { type: int, min: 60, max: 86400 }
+
+  - id: 8
+    name: diag.dtc.clear
+    summary: Clear stored diagnostic trouble codes on an ECU.
+    irreversibility: one_way_recoverable
+    safety: safety
+    params:
+      ecu: { type: enum, enum: ecu }
+
+  - id: 9
+    name: vehicle.immobilizer.engage
+    summary: Engage the immobilizer (vehicle cannot be driven).
+    irreversibility: one_way_recoverable
+    safety: safety
+    params: {}
+
+  - id: 10
+    name: chassis.brake.calibration.write
+    summary: Write a brake-system calibration blob.
+    irreversibility: one_way_consequential
+    safety: safety
+    params:
+      ecu:         { type: enum, enum: ecu }
+      blob_digest: { type: digest, doc: "sha256 of the calibration blob" }
+
+  - id: 11
+    name: ota.ecu.flash
+    summary: Flash a firmware image to an ECU (vehicle unusable during flash).
+    irreversibility: one_way_consequential
+    safety: safety
+    params:
+      ecu:          { type: enum, enum: ecu }
+      image_digest: { type: digest, doc: "sha256 of the firmware image" }
+
+# Reason codes are stable and append-only; they appear in capsules, in agent
+# tool results and on the HMI.
+reasons:
+  - { id: 0,   name: OK,                      text: "Allowed by policy." }
+  - { id: 1,   name: DEFAULT_DENY,            text: "No policy rule permits this action." }
+  - { id: 2,   name: UNKNOWN_ACTION,          text: "Action is not in the catalog." }
+  - { id: 3,   name: PARAM_INVALID,           text: "A parameter is missing or out of range." }
+  - { id: 4,   name: TELEMETRY_STALE,         text: "Vehicle telemetry is stale; failing closed." }
+  - { id: 5,   name: TELEMETRY_IMPLAUSIBLE,   text: "Vehicle telemetry is inconsistent; failing closed." }
+  - { id: 6,   name: LEDGER_PRESSURE,         text: "Audit ledger unavailable; no audit, no action." }
+  - { id: 7,   name: RATE_LIMITED,            text: "Too many requests for this action." }
+  - { id: 8,   name: INTENT_EXPIRED,          text: "The intent expired before evaluation." }
+  - { id: 20,  name: VEHICLE_MOVING,          text: "Not permitted while the vehicle is moving." }
+  - { id: 21,  name: NOT_PARKED,              text: "Requires gear P with the parking brake engaged." }
+  - { id: 22,  name: R156_NOT_SAFE_STATE,     text: "Software update requires a safe state (UN R156): parked, brake engaged." }
+  - { id: 23,  name: R156_INSUFFICIENT_POWER, text: "Software update requires sufficient energy (UN R156): SoC ≥ 40% or charging." }
+  - { id: 24,  name: SERVICE_MODE_REQUIRED,   text: "Requires an authenticated workshop service session." }
+  - { id: 25,  name: SPEED_DELTA_LARGE,       text: "Speed change exceeds the automatic limit; driver confirmation needed." }
+  - { id: 26,  name: SPEED_ABOVE_LIMIT,       text: "Requested speed exceeds the permitted maximum." }
+  - { id: 27,  name: WINDOW_HIGH_SPEED,       text: "Opening a window wide at high speed needs driver confirmation." }
+  - { id: 28,  name: DRIVER_CONSENT,          text: "Requires the driver's explicit consent." }
+  - { id: 29,  name: DRIVER_ABSENT,           text: "Requires the driver to be present." }
+  - { id: 40,  name: HUMAN_APPROVED,          text: "Approved by the driver." }
+  - { id: 41,  name: HUMAN_DENIED,            text: "Denied by the driver." }
+  - { id: 42,  name: ESCALATION_TIMEOUT,      text: "No driver response in time; failing closed." }
+  - { id: 60,  name: GRANT_MAC,               text: "Grant failed authentication (forged or tampered)." }
+  - { id: 61,  name: GRANT_UNKNOWN,           text: "Grant was never issued or is no longer known." }
+  - { id: 62,  name: GRANT_SPENT,             text: "Grant was already used (replay)." }
+  - { id: 63,  name: GRANT_EXPIRED,           text: "Grant expired before execution." }
+  - { id: 64,  name: GRANT_PARAMS,            text: "Command does not match the authorized parameters." }
+  - { id: 65,  name: GRANT_BINDING,           text: "Grant presented by a different client than it was issued to." }
+  - { id: 66,  name: GRANT_INTERLOCK,         text: "Vehicle state changed since authorization; interlock failed." }
+  - { id: 80,  name: AUTHORITY_EPOCH,         text: "Execution authority (re)started; new epoch." }
+  - { id: 81,  name: POLICY_ACTIVATED,        text: "A new signed policy was activated." }

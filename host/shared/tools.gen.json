@@ -1,0 +1,254 @@
+{
+  "catalog_sha256": "3b15b2994bc9693144f42ccbb59c5022819f1c4784b0da5860d7a3579b484048",
+  "tools": [
+    {
+      "name": "cabin_climate_set",
+      "description": "Set the driver-zone cabin temperature. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way.",
+      "strict": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "temp_dc": {
+            "type": "integer",
+            "description": "Target temperature in 0.1 °C (160 = 16.0 °C). Allowed range 160..280."
+          }
+        },
+        "required": [
+          "temp_dc"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "cabin_window_set",
+      "description": "Move one window to a position. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way.",
+      "strict": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "window": {
+            "type": "string",
+            "enum": [
+              "front_left",
+              "front_right",
+              "rear_left",
+              "rear_right"
+            ],
+            "description": "window"
+          },
+          "pos_pct": {
+            "type": "integer",
+            "description": "0 = closed, 100 = fully open. Allowed range 0..100."
+          }
+        },
+        "required": [
+          "window",
+          "pos_pct"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "body_door_unlock",
+      "description": "Unlock one door. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way.",
+      "strict": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "door": {
+            "type": "string",
+            "enum": [
+              "front_left",
+              "front_right",
+              "rear_left",
+              "rear_right"
+            ],
+            "description": "door"
+          }
+        },
+        "required": [
+          "door"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "light_hazard_set",
+      "description": "Turn the hazard lights on or off. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way.",
+      "strict": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "on": {
+            "type": "boolean",
+            "description": "on"
+          }
+        },
+        "required": [
+          "on"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "adas_acc_set_speed",
+      "description": "Change the adaptive-cruise-control set speed. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way.",
+      "strict": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "target_kph": {
+            "type": "integer",
+            "description": "target_kph. Allowed range 30..200."
+          }
+        },
+        "required": [
+          "target_kph"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "battery_charge_limit_set",
+      "description": "Set the maximum state-of-charge for charging. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way.",
+      "strict": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "pct": {
+            "type": "integer",
+            "description": "pct. Allowed range 50..100."
+          }
+        },
+        "required": [
+          "pct"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "telematics_location_share",
+      "description": "Share live vehicle location with a recipient for a duration. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: one_way_recoverable.",
+      "strict": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "recipient": {
+            "type": "string",
+            "enum": [
+              "emergency_contact",
+              "fleet_operator",
+              "roadside_assist"
+            ],
+            "description": "recipient"
+          },
+          "duration_s": {
+            "type": "integer",
+            "description": "duration_s. Allowed range 60..86400."
+          }
+        },
+        "required": [
+          "recipient",
+          "duration_s"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "diag_dtc_clear",
+      "description": "Clear stored diagnostic trouble codes on an ECU. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: one_way_recoverable.",
+      "strict": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "ecu": {
+            "type": "string",
+            "enum": [
+              "brake",
+              "powertrain",
+              "adas",
+              "bms",
+              "infotainment"
+            ],
+            "description": "ecu"
+          }
+        },
+        "required": [
+          "ecu"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "vehicle_immobilizer_engage",
+      "description": "Engage the immobilizer (vehicle cannot be driven). Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: one_way_recoverable.",
+      "strict": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "chassis_brake_calibration_write",
+      "description": "Write a brake-system calibration blob. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: one_way_consequential.",
+      "strict": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "ecu": {
+            "type": "string",
+            "enum": [
+              "brake",
+              "powertrain",
+              "adas",
+              "bms",
+              "infotainment"
+            ],
+            "description": "ecu"
+          },
+          "blob_digest": {
+            "type": "string",
+            "description": "sha256 of the calibration blob. Format: sha256:<64 lowercase hex>."
+          }
+        },
+        "required": [
+          "ecu",
+          "blob_digest"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ota_ecu_flash",
+      "description": "Flash a firmware image to an ECU (vehicle unusable during flash). Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: one_way_consequential.",
+      "strict": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "ecu": {
+            "type": "string",
+            "enum": [
+              "brake",
+              "powertrain",
+              "adas",
+              "bms",
+              "infotainment"
+            ],
+            "description": "ecu"
+          },
+          "image_digest": {
+            "type": "string",
+            "description": "sha256 of the firmware image. Format: sha256:<64 lowercase hex>."
+          }
+        },
+        "required": [
+          "ecu",
+          "image_digest"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

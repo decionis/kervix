@@ -1,0 +1,32 @@
+name: host
+
+# Host-only CI. The QNX SDP is licensed per developer and cannot be installed
+# in CI, so QNX builds are reproduced locally (make target). CI verifies
+# everything that does not need the SDP: the portable core, codegen
+# consistency, and AAC/COSE conformance against the published verifier.
+on:
+  push:
+  pull_request:
+
+jobs:
+  host:
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Codegen is up to date
+        run: npm run -s codegen:check
+      - name: libkxcore (strict warnings) + unit tests
+        run: |
+          cmake -S . -B build/host -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build/host
+          ctest --test-dir build/host --output-on-failure
+      - name: Spike S5 — AAC draft-04 + COSE conformance vs @decionis/verify
+        run: npm run -s spike:s5

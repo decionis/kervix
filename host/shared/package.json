@@ -1,0 +1,11 @@
+{
+  "name": "@kervix/shared",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Catalog constants, types and tool schemas generated from catalog/catalog.yaml",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tools.gen.json": "./tools.gen.json"
+  }
+}
