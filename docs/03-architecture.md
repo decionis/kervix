@@ -228,7 +228,7 @@ Freshness: `now - mono_ns > 50 ms` → `TELEMETRY_STALE` (K1). Plausibility (K2)
 
 ## 7. Policy language and bundle
 
-Authoring (host, YAML):
+Authoring (host, YAML). The authoritative demo policy is [`policies/default.yaml`](../policies/default.yaml), and the engine's semantics are in [`target/include/kervix/policy.h`](../target/include/kervix/policy.h):
 
 ```yaml
 policy: kervix-default
