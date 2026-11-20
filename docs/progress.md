@@ -13,9 +13,15 @@ One entry per milestone step: done / slipped / cut. Plan: `04-implementation-pla
 | Fri 2026-11-20 | M1 | `vsimd` 100 Hz simulator + seqlock telemetry + `kxctl` (#10): 16/16 on QNX. | — | — |
 | Fri 2026-11-20 | M1 | `kervixd` + `sdv_actuatord` end to end, propose → grant → redeem → actuate (#11): **M1 acceptance 16/16 on QNX**. Found + fixed: reaped grants reported SPENT instead of EXPIRED. | — | — |
 | Fri 2026-11-20 | **M1 ✅** | Driver escalation: queue, deferred-reply AWAIT, approve/deny/timeout, re-evaluation on approval (#12): 13/13 on QNX. Found + fixed: an agent blocked in AWAIT could not be interrupted (unblock pulses). | RPi4 not yet ordered: **main schedule risk** (benchmarks + on-device video) | — |
+| Fri 2026-11-20 | M2 | AAC draft-04 capsules + COSE_Sign1 in `libkxcore`, byte-identical on QNX and host (#14). Signed append-only ledger in `kervixd`: per-boot epochs, torn-write quarantine, K3 "no audit, no action" back-pressure; `kervix-verify` offline, with tamper detection (#15): 18/18 on QNX. | — | — |
+| Fri 2026-11-20 | M2 | Deterministic replay: `kervix-verify` re-derives every decision with the vehicle's own C policy core compiled to WASM (#16). A signed lie (OTA at 110 km/h recorded as ALLOW) is caught. | — | — |
+| Fri 2026-11-20 | M2 | secpol PR A: every component under an enforced type, `kx-rogue` red team (#17). Results: 9/10 attacks open without enforcement → 3/10 as root (all 7 channel/path attacks kernel-blocked) → **0/10 for the deployed agent**. Found: inherited fds bypass `channel_connect`. | — | — |
+| Fri 2026-11-20 | M2 | secpol PR B: **`--secpol=secure` release image** (#18): harvested system policy + monitor mode; every process typed; even root cannot start trusted types. 18/18 on QNX. | Docker Desktop hung a third time (restart) | — |
+| Fri 2026-11-20 | M2 | **U1** upstream: `follows` + `vehicle.` effect namespace registered in `@decionis/verify` and the producer validator (decionis/Decionis#1752, in review). | Needs a published `@decionis/verify` release before Kervix can pin it | — |
 
 ## Schedule status (end of Fri 2026-11-20)
 
-- Plan: M0 by Sun 11-22, M1 by Fri 11-27. **Actual: M0 and M1 both complete on Fri 11-20, about 7 days ahead.**
-- Next: M2. The signed AAC capsule ledger (Ed25519 via qcrypto, crash-safe append-only file, epoch capsules), `kervix-verify` on top of `@decionis/verify`, then the `--secpol=secure` image with every Kervix channel typed.
-- The buffer gained should go into M3 polish (3D dashboard, live Claude agent) and RPi4 benchmarking once the hardware arrives.
+- Plan: M0 by Sun 11-22, M1 by Fri 11-27, M2 by Thu 12-03. **Actual: M0 and M1 complete, and M2's core is complete (capsules, ledger, verifier, replay, secure secpol, red team) on Fri 11-20.**
+- M2 still open: U1 release and pin (waiting on review + npm publish), `kx-selftest`, `kx-supervisor`, signed policy bundles, rate limiter, and every target test on RPi4.
+- **The main schedule risk is still the RPi4, which is not yet ordered.** All results so far are from QEMU (TCG, emulated). Timing numbers are not representative (H3).
+- The buffer gained goes into M3 polish (3D dashboard, live Claude agent) and RPi4 benchmarking once the hardware arrives.
