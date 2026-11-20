@@ -1,0 +1,11 @@
+{
+  "name": "@kervix/verify",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Offline verifier for Kervix dossiers (signed AAC draft-04 capsule ledgers), built on @decionis/verify",
+  "bin": { "kervix-verify": "./kervix-verify.mjs" },
+  "engines": { "node": ">=20" },
+  "dependencies": { "@decionis/verify": "0.5.0" }
+}

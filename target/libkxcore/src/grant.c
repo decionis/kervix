@@ -1,4 +1,5 @@
 /* Execution grants. See kervix/grant.h. */
+#include <stdint.h>
 #include <string.h>
 
 #include "kervix/grant.h"
@@ -82,6 +83,10 @@ static kx_grant_slot_t *find(kx_grant_table_t *t, const uint8_t id[16]) {
         }
     }
     return NULL;
+}
+
+const kx_grant_slot_t *kx_grant_find(const kx_grant_table_t *t, const uint8_t grant_id[16]) {
+    return find((kx_grant_table_t *)(uintptr_t)t, grant_id);
 }
 
 void kx_grant_table_init(kx_grant_table_t *t, const uint8_t key[KX_GRANT_KEY_LEN]) {

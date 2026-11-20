@@ -18,6 +18,8 @@
  *        --await          on ESCALATE, block until the driver resolves it (or it times out)
  *   kxctl execute --grant F         present a saved grant (a DIFFERENT process: binding test)
  *   kxctl stats                     authority counters + PROPOSE latency histogram
+ *   kxctl dossier export <dir>      export the signed ledger for offline verification (kervix-verify)
+ *   kxctl dossier tail [N]          last N capsules (default 10)
  *   kxctl escalations               pending driver decisions (the HMI's view)
  *   kxctl approve <id> [--as NAME]  driver approves (re-evaluated on live telemetry first)
  *   kxctl deny <id> [--as NAME]     driver denies
@@ -32,11 +34,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <sys/neutrino.h>
 #include <time.h>
 #include <unistd.h>
 
+#include "kervix/cose.h"
 #include "kervix/kervix_abi.h"
+#include "kervix/ledger.h"
+#include "kervix/sha256.h"
 #include "kervix/policy.h"
 #include "kervix/seqlock.h"
 #include "kervix/vsim_abi.h"
@@ -391,6 +397,146 @@ static int cmd_resolve(int argc, char **argv, int approve) {
     return 0;
 }
 
+#define KX_DATADIR "/data/kervix"
+
+/* Load the ledger file and walk its valid prefix. */
+static uint8_t *load_ledger(size_t *n) {
+    const char *path = KX_DATADIR "/ledger/ledger.kxl";
+    int fd = open(path, O_RDONLY);
+    struct stat st;
+    if (fd == -1 || fstat(fd, &st) == -1) { fprintf(stderr, "kxctl: %s: %s\n", path, strerror(errno)); return NULL; }
+    uint8_t *buf = malloc((size_t)st.st_size + 1);
+    ssize_t r = buf ? read(fd, buf, (size_t)st.st_size) : -1;
+    close(fd);
+    if (r != st.st_size) { free(buf); return NULL; }
+    *n = (size_t)st.st_size;
+    return buf;
+}
+
+typedef int (*rec_fn)(void *arg, const kx_ledger_hdr_t *h, const char *capsule, const uint8_t *env);
+static uint64_t walk(const uint8_t *buf, size_t n, rec_fn fn, void *arg) {
+    size_t off = 0;
+    uint64_t count = 0;
+    while (n - off >= KX_LEDGER_HDR_LEN) {
+        kx_ledger_hdr_t h;
+        if (kx_ledger_hdr_decode(buf + off, &h) != 0) break;
+        size_t total = KX_LEDGER_HDR_LEN + h.capsule_len + KX_COSE_ENVELOPE_LEN;
+        if (n - off < total) break;
+        const char *cap = (const char *)buf + off + KX_LEDGER_HDR_LEN;
+        const uint8_t *env = buf + off + KX_LEDGER_HDR_LEN + h.capsule_len;
+        if (!kx_ledger_crc_ok(buf + off, &h, cap, env)) break;
+        if (fn && fn(arg, &h, cap, env) != 0) return count;
+        count++;
+        off += total;
+    }
+    return count;
+}
+
+typedef struct { FILE *caps, *envs; kx_sha256_t hc, he; uint64_t first, last; uint8_t head[32]; } export_t;
+static int export_one(void *arg, const kx_ledger_hdr_t *h, const char *capsule, const uint8_t *env) {
+    export_t *x = arg;
+    char b64[260];
+    size_t bn = kx_base64url(env, KX_COSE_ENVELOPE_LEN, b64);
+    fwrite(capsule, 1, h->capsule_len, x->caps); fputc('\n', x->caps);
+    fwrite(b64, 1, bn, x->envs); fputc('\n', x->envs);
+    kx_sha256_update(&x->hc, capsule, h->capsule_len); kx_sha256_update(&x->hc, "\n", 1);
+    kx_sha256_update(&x->he, b64, bn); kx_sha256_update(&x->he, "\n", 1);
+    if (!x->first) x->first = h->seq;
+    x->last = h->seq;
+    memcpy(x->head, h->capsule_id, 32);
+    return 0;
+}
+
+static int sha256_file(const char *path, char out[65]) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    kx_sha256_t s;
+    kx_sha256_init(&s);
+    uint8_t b[4096], d[32];
+    size_t r;
+    while ((r = fread(b, 1, sizeof b, f)) > 0) kx_sha256_update(&s, b, r);
+    fclose(f);
+    kx_sha256_final(&s, d);
+    kx_hex(d, 32, out);
+    return 0;
+}
+
+static int cmd_dossier(int argc, char **argv) {
+    size_t n;
+    if (argc >= 1 && !strcmp(argv[0], "tail")) {
+        int want = argc >= 2 ? atoi(argv[1]) : 10;
+        uint8_t *buf = load_ledger(&n);
+        if (!buf) return 2;
+        uint64_t total = walk(buf, n, NULL, NULL);
+        uint64_t skip = total > (uint64_t)want ? total - (uint64_t)want : 0, i = 0;
+        size_t off = 0;
+        while (i < total) {
+            kx_ledger_hdr_t h;
+            kx_ledger_hdr_decode(buf + off, &h);
+            char *cap = (char *)buf + off + KX_LEDGER_HDR_LEN;
+            if (i >= skip) {
+                char tmp[KX_CAPSULE_JCS_MAX + 1];
+                memcpy(tmp, cap, h.capsule_len); tmp[h.capsule_len] = '\0';
+                char ev[24] = "?", rs[40] = "?", vc[24] = "(authorized)", ac[40] = "", idh[17];
+                char *p;
+                if ((p = strstr(tmp, "\"event\":\""))) sscanf(p + 9, "%23[^\"]", ev);
+                if ((p = strstr(tmp, "\"reason\":\""))) sscanf(p + 10, "%39[^\"]", rs);
+                if ((p = strstr(tmp, "\"verdict_class\":\""))) sscanf(p + 17, "%23[^\"]", vc);
+                if ((p = strstr(tmp, "\"intent\":{\"action\":\""))) sscanf(p + 20, "%39[^\"]", ac);
+                kx_hex(h.capsule_id, 8, idh);
+                printf("#%-5llu %s…  %-14s %-20s %-26s %s\n", (unsigned long long)h.seq, idh, vc, ev, rs, ac);
+            }
+            off += KX_LEDGER_HDR_LEN + h.capsule_len + KX_COSE_ENVELOPE_LEN;
+            i++;
+        }
+        printf("(%llu capsule(s) in ledger, %zu bytes)\n", (unsigned long long)total, n);
+        free(buf);
+        return 0;
+    }
+    if (argc != 2 || strcmp(argv[0], "export")) return usage();
+    const char *dir = argv[1];
+    mkdir(dir, 0755);
+    uint8_t *buf = load_ledger(&n);
+    if (!buf) return 2;
+    char pc[512], pe[512], pj[512], pm[512];
+    snprintf(pc, sizeof pc, "%s/capsules.jsonl", dir);
+    snprintf(pe, sizeof pe, "%s/envelopes.txt", dir);
+    snprintf(pj, sizeof pj, "%s/vehicle.jwk.json", dir);
+    snprintf(pm, sizeof pm, "%s/manifest.json", dir);
+    export_t x;
+    memset(&x, 0, sizeof x);
+    x.caps = fopen(pc, "wb");
+    x.envs = fopen(pe, "wb");
+    if (!x.caps || !x.envs) { perror("kxctl: export"); return 2; }
+    kx_sha256_init(&x.hc);
+    kx_sha256_init(&x.he);
+    uint64_t count = walk(buf, n, export_one, &x);
+    fclose(x.caps);
+    fclose(x.envs);
+    free(buf);
+    /* public key */
+    int in = open(KX_DATADIR "/keys/vehicle.jwk.json", O_RDONLY);
+    char jwk[512];
+    ssize_t jn = in == -1 ? -1 : read(in, jwk, sizeof jwk);
+    if (in != -1) close(in);
+    FILE *jf = fopen(pj, "wb");
+    if (jn <= 0 || !jf) { fprintf(stderr, "kxctl: vehicle.jwk.json missing\n"); return 2; }
+    fwrite(jwk, 1, (size_t)jn, jf);
+    fclose(jf);
+    char hc[65], he[65], hj[65], head[65];
+    sha256_file(pc, hc); sha256_file(pe, he); sha256_file(pj, hj);
+    kx_hex(x.head, 32, head);
+    FILE *mf = fopen(pm, "wb");
+    if (!mf) return 2;
+    fprintf(mf, "{\"files\":{\"capsules.jsonl\":\"sha256:%s\",\"envelopes.txt\":\"sha256:%s\",\"vehicle.jwk.json\":\"sha256:%s\"},"
+                "\"first_seq\":%llu,\"format\":\"kervix.dossier/1\",\"head_capsule_id\":\"%s\",\"last_seq\":%llu,\"records\":%llu}\n",
+            hc, he, hj, (unsigned long long)x.first, head, (unsigned long long)x.last, (unsigned long long)count);
+    fclose(mf);
+    printf("exported %llu capsule(s) (seq %llu..%llu, head %.16s…) to %s\n", (unsigned long long)count,
+           (unsigned long long)x.first, (unsigned long long)x.last, head, dir);
+    return 0;
+}
+
 static int cmd_stats(void) {
     int fd = open(KX_PATH_STATS, O_RDONLY);
     if (fd == -1) { fprintf(stderr, "kxctl: %s: %s\n", KX_PATH_STATS, strerror(errno)); return 2; }
@@ -409,7 +555,8 @@ static int usage(void) {
                     "  kxctl propose [--exec|--await|--replay|--forge|--delay-ms N|--sim CMD|--mutate k=v|--save-grant F|--actor ID]\n"
                     "                <action> [key=value...]\n"
                     "  kxctl execute --grant F\n  kxctl stats\n"
-                    "  kxctl escalations | approve <id> [--as NAME] | deny <id> [--as NAME]\n");
+                    "  kxctl escalations | approve <id> [--as NAME] | deny <id> [--as NAME]\n"
+                    "  kxctl dossier export <dir> | dossier tail [N]\n");
     return 2;
 }
 
@@ -426,6 +573,7 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[1], "propose") && argc >= 3) return cmd_propose(argc - 2, argv + 2);
     if (!strcmp(argv[1], "execute")) return cmd_execute(argc - 2, argv + 2);
     if (!strcmp(argv[1], "stats")) return cmd_stats();
+    if (!strcmp(argv[1], "dossier") && argc >= 3) return cmd_dossier(argc - 2, argv + 2);
     if (!strcmp(argv[1], "escalations")) return cmd_escalations();
     if (!strcmp(argv[1], "await") && argc == 3) return cmd_await(argv[2]);
     if (!strcmp(argv[1], "approve") && argc >= 3) return cmd_resolve(argc - 2, argv + 2, 1);

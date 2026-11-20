@@ -372,38 +372,38 @@ The CBOR is a fixed shape and is emitted from a byte template, so no general CBO
 - The vehicle key is generated on first boot. The public key is exported as SPKI DER, and its last 32 bytes become the raw key for the COSE `kid` header and the JWK `x`.
 - Host tests and the replay verifier use Node's crypto for Ed25519. No Monocypher dependency is needed.
 
-### 8.5 Ledger
+### 8.5 Ledger — implemented (`kervixd/kxledger.c`, `kervix/ledger.h`; `tests/target/ledger.sh` 15/15 on QNX 8.0)
 
-- **Ledger file:** `/var/kervix/ledger/<epoch>.kxl`, append-only. Each record is `[u32 len][u32 crc32c][capsule JSON][u16 env_len][COSE bytes]`, written with `fsync` batching (≤ 20 ms or 64 records).
-- **Restart:** scan the tail. A torn record is truncated into `quarantine/` and its offset is noted in the `epoch_boundary` capsule. The last valid capsule_id becomes the chain parent.
-- **Writer thread** (prio 15): drains the SPSC ring, serializes JCS, computes capsule_id, signs and appends. Ring > 90% full sets the `LEDGER_PRESSURE` flag, which trips K3, and new non-QM actions get BLOCK. This is "no audit, no action".
-- **Export:** `kxctl export` writes `dossier/` containing:
-  - `capsules.jsonl`
-  - `envelopes.b64` (one per line)
-  - `vehicle.jwk.json`
-  - `policy/*.kxp` + their YAML source
-  - `telemetry/` (snapshots referenced by capsules)
-  - `manifest.json` (file sha256s, head capsule id, Ed25519-signed)
+- **Files:**
+  - `<datadir>/ledger/ledger.kxl`, append-only. Each record is a 52-byte header (`KXL1`, length, `ledger_seq`, `capsule_id`, CRC-32C), then the capsule JSON, then the 181-byte COSE envelope.
+  - `<datadir>/keys/vehicle.key`: Ed25519 PKCS#8 DER, mode 0400, generated with qcrypto on first boot and reused afterwards.
+  - `vehicle.jwk.json`, with an RFC 7638 thumbprint `kid`.
+- **Writer thread** (SCHED_RR 15) drains a bounded MPSC queue. For each record it builds the capsule, signs it with a fresh qcrypto `eddsa-pure` context, and appends with one `writev`. `fsync` is batched (≤ 64 records or 20 ms; immediately when idle). **Recording never runs on the decision path.**
+- **No audit, no action:**
+  - Every outstanding grant and every redeemed grant awaiting its effect holds a **reserved queue slot**, so the terminal record of every action (effect, expiry, or refusal of a live grant) always fits.
+  - ALLOW and ESCALATE need `free ≥ 2 + owed`, otherwise BLOCK `LEDGER_PRESSURE`.
+  - Only non-terminal records, i.e. decisions that changed nothing, can be dropped under flood; they are counted, not latched.
+  - K3 trips at 90% queue fill or on any signing or storage error (latched).
+- **Recovery:** the valid prefix is found with `kx_ledger_scan` (magic, bounds, CRC, contiguous sequence). A torn or corrupt tail is moved to `quarantine-<epoch>.bin` and truncated, never silently dropped. A new **epoch capsule** (random epoch id) records `quarantined_bytes` and chains to the last valid capsule with `epoch_opens`.
+- **Export:** `kxctl dossier export <dir>` writes `capsules.jsonl`, `envelopes.txt` (base64url), `vehicle.jwk.json` and `manifest.json` (file sha256s, record count, sequence range, head). `kxctl dossier tail [N]` gives a quick on-target view.
 
----
+## 9. Verification and deterministic replay (host) — `host/verify/kervix-verify.mjs` implemented
 
-## 9. Verification and deterministic replay (host)
+`kervix-verify <dossier> [--json]` runs offline on Node ≥ 20, built on `@decionis/verify`. Exit 0/1/2. Checks:
 
-`kervix-verify dossier/` (TypeScript, Node ≥ 18, offline) runs these checks:
+1. **manifest:** file hashes, record count, head, sequence range.
+2. **key:** exactly one OKP/Ed25519 key, whose `kid` is its RFC 7638 thumbprint.
+3. **capsules:** bytes are canonical (RFC 8785), the identity recomputes, and AAC draft-04 Class 1 passes with the chain resolved.
+4. **signatures:** every Producer Envelope verifies **and** was signed by the pinned vehicle key.
+5. **chain:** each capsule's parent is the previous one, `ledger_seq` is contiguous, and `epoch_opens` appears only on epoch capsules.
+6. **semantics:**
+   - no actuation without a prior authorization (ALLOW decision or human approval) for that grant and intent;
+   - no grant executed twice;
+   - every escalation resolution follows its escalation.
 
-1. **Capsule identity and Class 1:** `verifyAgentActionCapsuleV04Class1(capsule, {known_capsules})` for every capsule.
-2. **Signatures:** `verifyAgentActionCapsuleProducerEnvelope(cose, capsule_id)`; the public key must equal the pinned `vehicle.jwk.json`.
-3. **Chain:** one linear stream, no gaps, `epoch_opens` only after a gap, and `ledger_seq` strictly increasing.
-4. **Semantic invariants:**
-   - Every `confirmed` effect has an earlier accepting decision with the same `intent_hash` and `grant_id`.
-   - No `grant_id` is executed twice.
-   - No effect follows a `blocked` decision for the same intent.
-   - Every human resolution precedes its grant.
-5. **Replay:** for each decision capsule, load the policy bundle with that `policy_hash` and call `libkxcore` `kx_eval()` with the recorded intent and telemetry. The verdict, reason and rule must be byte-identical.
-   - Delivery: a native helper first; a WASM build of `libkxcore` (freestanding C → `wasm32`) is the stretch, so the dashboard can do the same in-browser.
-6. **Report:** a human table plus `--json`. Exit code 0/1/2, matching `@decionis/verify` conventions.
+Tampering detected by `tests/target/ledger.sh`: edited evidence (with and without a forged manifest), a deleted record, swapped signatures, a substituted public key. A **real QNX-signed dossier** is committed as `tests/fixtures/dossier-qnx-qemu-2026-11-20/`; CI verifies it and rejects a one-byte-tampered copy on every push.
 
----
+**Replay** (next): the verifier will re-run the C policy core on each decision's recorded `intent`, `telemetry` and `env`. `kx_capsule_replay()` already reproduces every verdict in the C tests. It will run as a native host helper first; WASM for in-browser verification is the stretch goal.
 
 ## 10. Real-time design and timing budget
 

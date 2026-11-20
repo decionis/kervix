@@ -14,7 +14,11 @@
  * Grant ids and the per-boot grant key come from qcrypto's DRBG; a restart
  * therefore invalidates every outstanding grant (fail-closed).
  *
- * usage: kervixd [-V vehicle_id] [-T tenant_uuid] [-A max_telemetry_age_ms] [-v]
+ * Every lifecycle event is recorded as a signed AAC capsule by the ledger
+ * writer (kxledger.c); "no audit, no action" feeds constitution K3.
+ *
+ * usage: kervixd [-V vehicle_id] [-T tenant_uuid] [-A max_telemetry_age_ms] [-D datadir]
+ *                [-R ledger_queue] [-S slow_ms (test)] [-v]
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -38,6 +42,7 @@
 #include "kervix/kervix_abi.h"
 #include "kervix/policy.h"
 #include "kervix/seqlock.h"
+#include "kxledger.h"
 
 #define HIST_BUCKETS 20 /* log2 microseconds: [0,1) [1,2) [2,4) ... */
 
@@ -58,6 +63,7 @@ static struct {
     uint64_t            proposals, by_verdict[4], by_reason[256], redeem_ok, redeem_fail[256];
     uint64_t            effects_ok, effects_fail, reaped;
     uint64_t            esc_created, esc_approved, esc_denied, esc_expired, esc_reblocked;
+    uint32_t            awaiting_effect;    /* redeemed grants whose EFFECT record is still due */
     uint64_t            hist[HIST_BUCKETS], lat_min_ns, lat_max_ns;
 } K = { .lock = PTHREAD_MUTEX_INITIALIZER, .lat_min_ns = UINT64_MAX };
 
@@ -112,6 +118,22 @@ static const char *reason_name(uint16_t r) {
     const kx_reason_spec_t *s = kx_catalog_reason(r);
     return s ? s->name : "?";
 }
+/* Fill the common part of a capsule record. */
+static void rec_init(kx_capsule_rec_t *r, uint8_t event, const kx_intent_t *in, kx_client_t who) {
+    memset(r, 0, sizeof *r);
+    r->event = event;
+    r->rule_index = -1;
+    r->timestamp_ms = realtime_ms();
+    memcpy(r->policy_hash, K.policy.hash, 32);
+    r->client_pid = who.pid;
+    r->client_type = who.type_id;
+    if (in) { r->has_intent = 1; r->intent = *in; }
+}
+
+/* Slots that must stay free for records still owed: one terminal record per
+ * outstanding grant (effect, refusal or expiry) and per grant awaiting its effect. */
+static uint32_t owed(void) { return K.grants.outstanding + K.awaiting_effect; }
+
 static int rng_bytes(uint8_t *buf, size_t n) {
     return qcrypto_rng_bytes(K.rng, buf, n) == QCRYPTO_R_EOK ? 0 : -1;
 }
@@ -180,9 +202,10 @@ static void esc_resolve(esc_t *e, int approve, const char *approver) {
     } else {
         kx_telemetry_t tel;
         telemetry(&tel);
-        kx_eval_env_t env = { now, realtime_ms(), K.max_age_ns, 1 };
+        kx_eval_env_t env = { now, realtime_ms(), K.max_age_ns, (uint8_t)kxl_healthy() };
         kx_eval_result_t r;
         kx_eval(&K.policy, &e->in, &tel, &env, &r);
+        if (kxl_free() < 2u + owed()) { r.verdict = KX_VERDICT_BLOCK; r.reason = KX_R_LEDGER_PRESSURE; r.gate = KX_GATE_K3_LEDGER; }
         d->telemetry_seq = tel.seq;
         int still_ok = r.verdict == KX_VERDICT_ALLOW ||
                        (r.verdict == KX_VERDICT_ESCALATE && r.rule_index == e->rule_index);
@@ -206,6 +229,18 @@ static void esc_resolve(esc_t *e, int approve, const char *approver) {
     K.by_reason[d->reason & 0xff]++;
     e->state = ESC_RESOLVED;
     e->forget_ns = now + 60ull * 1000000000ull;
+    {
+        kx_capsule_rec_t rec;
+        rec_init(&rec, KX_EV_ESC_RESOLVED, &e->in, e->proposer);
+        rec.verdict = d->verdict; rec.reason = d->reason; rec.gate = d->gate; rec.rule_index = d->rule_index;
+        memcpy(rec.rule_id, d->rule_id, sizeof rec.rule_id);
+        memcpy(rec.intent_hash, e->intent_hash, 32);
+        rec.escalation_id = e->id;
+        rec.human = approve >= 0;
+        if (approver) snprintf(rec.approver, sizeof rec.approver, "%s", approver);
+        if (d->verdict == KX_VERDICT_ALLOW) { rec.has_grant = 1; memcpy(rec.grant_id, d->grant.grant_id, 16); }
+        kxl_submit(&rec, owed());
+    }
     if (e->waiter) { reply_decision(e->waiter, d); e->waiter = 0; }
     if (K.verbose) printf("kervixd: escalation #%u %s by %s -> %s\n", e->id,
                           approve < 0 ? "timed out" : approve ? "approved" : "denied", approver ? approver : "-",
@@ -225,9 +260,16 @@ static void propose(resmgr_context_t *ctp, const kx_intent_t *in, kx_decision_t 
     int64_t now_ms = realtime_ms();
 
     pthread_mutex_lock(&K.lock);
-    kx_eval_env_t env = { now, now_ms, K.max_age_ns, 1 /* ledger arrives in M2 */ };
+    kx_eval_env_t env = { now, now_ms, K.max_age_ns, (uint8_t)kxl_healthy() };
     kx_eval_result_t r;
     kx_eval(&K.policy, in, &tel, &env, &r);
+    /* no audit, no action: an ALLOW/ESCALATE needs room for its capsule before a grant exists */
+    if ((r.verdict == KX_VERDICT_ALLOW || r.verdict == KX_VERDICT_ESCALATE) && kxl_free() < 2u + owed()) {
+        r.verdict = KX_VERDICT_BLOCK;
+        r.reason = KX_R_LEDGER_PRESSURE;
+        r.gate = KX_GATE_K3_LEDGER;
+        r.rule_index = -1;
+    }
 
     kx_intent_ctx_t ictx = { K.tenant_id, K.vehicle_id, "ai_agent", now_ms };
     if (kx_validate_intent(in) == KX_R_OK) kx_intent_hash(in, &ictx, d->intent_hash);
@@ -270,6 +312,18 @@ static void propose(resmgr_context_t *ctp, const kx_intent_t *in, kx_decision_t 
 
     uint64_t ns = (ClockCycles() - c0) * 1000000000ull / K.cps;
     d->eval_ns = (uint32_t)(ns > UINT32_MAX ? UINT32_MAX : ns);
+
+    kx_capsule_rec_t rec;                       /* recorded as received, valid or not */
+    rec_init(&rec, KX_EV_DECISION, in, client);
+    rec.verdict = d->verdict; rec.gate = d->gate; rec.reason = d->reason; rec.rule_index = d->rule_index;
+    memcpy(rec.rule_id, d->rule_id, sizeof rec.rule_id);
+    rec.captured_at_ms = now_ms;
+    memcpy(rec.intent_hash, d->intent_hash, 32);
+    rec.has_telemetry = 1; rec.telemetry = tel; rec.env = env;
+    rec.escalation_id = d->escalation_id;
+    rec.eval_ns = d->eval_ns;
+    if (d->verdict == KX_VERDICT_ALLOW) { rec.has_grant = 1; memcpy(rec.grant_id, d->grant.grant_id, 16); }
+    kxl_submit(&rec, owed());
     K.proposals++;
     K.by_verdict[d->verdict & 3]++;
     K.by_reason[d->reason & 0xff]++;
@@ -394,9 +448,21 @@ static int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, void *ocb_v) {
         kx_telemetry_t tel;
         telemetry(&tel);
         pthread_mutex_lock(&K.lock);
+        uint32_t outstanding_before = K.grants.outstanding;
         uint16_t reason = kx_grant_redeem(&K.grants, &rq.grant, &rq.command, rq.presenter, mono_ns(),
                                           &K.policy, &tel);
+        int consumed = K.grants.outstanding < outstanding_before; /* this call ended an outstanding grant */
+        if (reason == KX_R_OK) K.awaiting_effect++;
         if (reason == KX_R_OK) K.redeem_ok++; else K.redeem_fail[reason & 0xff]++;
+        if (reason != KX_R_OK) {
+            kx_capsule_rec_t rec;
+            rec_init(&rec, KX_EV_GRANT_REFUSED, &rq.command, rq.presenter);
+            rec.reason = reason;
+            rec.has_grant = 1;
+            memcpy(rec.grant_id, rq.grant.grant_id, 16);
+            memcpy(rec.intent_hash, rq.grant.intent_hash, 32);
+            kxl_submit(&rec, consumed ? 0 : owed());   /* terminal for a live grant; otherwise an attempt */
+        }
         pthread_mutex_unlock(&K.lock);
         if (K.verbose) printf("kervixd: REDEEM by actuator pid=%d for presenter pid=%d -> %s\n",
                               ctp->info.pid, rq.presenter.pid, reason_name(reason));
@@ -410,7 +476,22 @@ static int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, void *ocb_v) {
         memcpy(&e, data, sizeof e);
         pthread_mutex_lock(&K.lock);
         if (e.ok) K.effects_ok++; else K.effects_fail++;
-        pthread_mutex_unlock(&K.lock); /* capsule ledger records effects in M2 */
+        if (K.awaiting_effect) K.awaiting_effect--;
+        const kx_grant_slot_t *slot = kx_grant_find(&K.grants, e.grant_id);
+        if (slot != NULL) {
+            kx_client_t who = { slot->grant.proposer_type, slot->grant.proposer_pid };
+            kx_capsule_rec_t rec;
+            rec_init(&rec, KX_EV_EFFECT, &slot->intent, who);
+            rec.effect_ok = e.ok;
+            rec.reason = e.ok ? KX_R_OK : KX_R_ACTUATOR_FAILED;
+            rec.has_grant = 1;
+            memcpy(rec.grant_id, e.grant_id, 16);
+            memcpy(rec.intent_hash, slot->grant.intent_hash, 32);
+            memcpy(rec.request_digest, e.request_digest, 32);
+            memcpy(rec.response_digest, e.response_digest, 32);
+            kxl_submit(&rec, 0);                         /* terminal: uses its reserved slot */
+        }
+        pthread_mutex_unlock(&K.lock);
         if (K.verbose) printf("kervixd: EFFECT action=%u %s\n", e.action, e.ok ? "confirmed" : "FAILED");
         memset(&msg->o, 0, sizeof msg->o);
         return _RESMGR_PTR(ctp, &msg->o, sizeof msg->o);
@@ -467,6 +548,7 @@ static int io_read(resmgr_context_t *ctp, io_read_t *msg, void *ocb_v) {
     OUT("grants outstanding %u  redeemed %" PRIu64 "  expired(reaped) %" PRIu64 "\n", K.grants.outstanding, K.redeem_ok, K.reaped);
     for (int r = 0; r < 256; r++) if (K.redeem_fail[r]) OUT("  refused %-23s %" PRIu64 "\n", reason_name((uint16_t)r), K.redeem_fail[r]);
     OUT("effects confirmed %" PRIu64 "  failed %" PRIu64 "\n", K.effects_ok, K.effects_fail);
+    { char ls[320]; kxl_status(ls, sizeof ls); OUT("%s", ls); }
     OUT("escalations created %" PRIu64 "  approved %" PRIu64 "  denied %" PRIu64 "  timed-out %" PRIu64
         "  re-blocked-on-approval %" PRIu64 "\n", K.esc_created, K.esc_approved, K.esc_denied, K.esc_expired, K.esc_reblocked);
     if (K.proposals) {
@@ -540,8 +622,21 @@ static void *reaper(void *arg) {
         usleep(20000);
         pthread_mutex_lock(&K.lock);
         uint64_t now = mono_ns();
-        uint32_t n = kx_grant_reap(&K.grants, now, NULL, 0); /* "expired" capsules arrive in M2 */
+        uint8_t ids[32][16];
+        uint32_t n = kx_grant_reap(&K.grants, now, ids, 32);
         K.reaped += n;
+        for (uint32_t i = 0; i < n && i < 32; i++) {
+            const kx_grant_slot_t *slot = kx_grant_find(&K.grants, ids[i]);
+            if (slot == NULL) continue;
+            kx_client_t who = { slot->grant.proposer_type, slot->grant.proposer_pid };
+            kx_capsule_rec_t rec;
+            rec_init(&rec, KX_EV_GRANT_EXPIRED, &slot->intent, who);
+            rec.reason = KX_R_GRANT_EXPIRED;
+            rec.has_grant = 1;
+            memcpy(rec.grant_id, ids[i], 16);
+            memcpy(rec.intent_hash, slot->grant.intent_hash, 32);
+            kxl_submit(&rec, 0);                         /* terminal: uses its reserved slot */
+        }
         for (int i = 0; i < KX_MAX_ESCALATIONS; i++) {
             esc_t *e = &g_esc[i];
             if (e->state == ESC_PENDING && now > e->deadline_ns) esc_resolve(e, -1, NULL); /* fail closed */
@@ -556,14 +651,18 @@ static void *reaper(void *arg) {
 int main(int argc, char **argv) {
     snprintf(K.vehicle_id, sizeof K.vehicle_id, "veh-demo-0001");
     snprintf(K.tenant_id, sizeof K.tenant_id, "6f1c2b9e-4d3a-4c8b-9a7e-2b1d0c3e4f5a");
-    unsigned max_age_ms = 50;
+    unsigned max_age_ms = 50, ring = 1024, slow_ms = 0;
+    const char *datadir = "/data/kervix";
     int opt;
-    while ((opt = getopt(argc, argv, "V:T:A:v")) != -1) {
+    while ((opt = getopt(argc, argv, "V:T:A:D:R:S:v")) != -1) {
         if (opt == 'V') snprintf(K.vehicle_id, sizeof K.vehicle_id, "%s", optarg);
         else if (opt == 'T') snprintf(K.tenant_id, sizeof K.tenant_id, "%s", optarg);
         else if (opt == 'A') max_age_ms = (unsigned)atoi(optarg);
         else if (opt == 'v') K.verbose = 1;
-        else { fprintf(stderr, "usage: kervixd [-V vehicle_id] [-T tenant_uuid] [-A max_age_ms] [-v]\n"); return 2; }
+        else if (opt == 'D') datadir = optarg;
+        else if (opt == 'R') ring = (unsigned)atoi(optarg);
+        else if (opt == 'S') slow_ms = (unsigned)atoi(optarg);
+        else { fprintf(stderr, "usage: kervixd [-V vehicle_id] [-T tenant_uuid] [-A max_age_ms] [-D datadir] [-R queue] [-S slow_ms] [-v]\n"); return 2; }
     }
     setvbuf(stdout, NULL, _IOLBF, 0);
     K.max_age_ns = (uint64_t)max_age_ms * 1000000ull;
@@ -585,6 +684,10 @@ int main(int argc, char **argv) {
     }
     kx_grant_table_init(&K.grants, key);
     qcrypto_memclear(key, sizeof key);
+
+    kxl_config_t lc = { datadir, K.vehicle_id, K.tenant_id, ring, slow_ms, K.verbose, { 0 } };
+    memcpy(lc.policy_hash, K.policy.hash, 32);
+    if (kxl_open(&lc) != 0) { fprintf(stderr, "kervixd: ledger unavailable: refusing to start (no audit, no action)\n"); return 1; }
 
     for (int c = 0; c < CH__COUNT; c++) {
         if ((g_disp[c] = dispatch_create()) == NULL) { perror("kervixd: dispatch_create"); return 1; }
