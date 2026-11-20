@@ -210,6 +210,51 @@ static void test_capacity(void) {
     KX_CHECK(kx_grant_issue(&T, &in, ih, PHASH, 0, 250, AGENT, id, T0 + KX_GRANT_TOMBSTONE_NS + 400 * MS, &g) == KX_R_OK);
 }
 
+/* A full table of tombstones must not lock out new grants (kx-bench finding):
+ * tombstones past the effect grace are reused, live grants never are, and a
+ * replay of an evicted grant is still refused. */
+static void test_tombstone_reuse(void) {
+    kx_grant_table_init(&T, KEY);
+    kx_intent_t in = door(1);
+    kx_telemetry_t tel = parked();
+    kx_eval_env_t env = { T0, 0, 50 * MS, 1 };
+    kx_eval_result_t r;
+    KX_CHECK(kx_eval(&POL, &in, &tel, &env, &r) == KX_VERDICT_ALLOW);
+    int16_t rule = r.rule_index;
+    uint8_t ih[32] = { 0 }, id[16];
+    static kx_grant_t g[KX_GRANT_SLOTS];
+    for (uint32_t n = 0; n < KX_GRANT_SLOTS; n++) {
+        gid(id, 5000 + n);
+        KX_CHECK(kx_grant_issue(&T, &in, ih, PHASH, rule, 250, AGENT, id, T0, &g[n]) == KX_R_OK);
+    }
+    /* half are spent right away, the rest expire */
+    for (uint32_t n = 0; n < KX_GRANT_SLOTS / 2; n++) KX_CHECK(redeem(&g[n], &in, AGENT, T0 + 10 * MS, &tel) == KX_R_OK);
+    KX_CHECK(kx_grant_reap(&T, T0 + 300 * MS, NULL, 0) == KX_GRANT_SLOTS / 2);
+    KX_CHECK(T.outstanding == 0);
+    gid(id, 90000);
+    kx_grant_t fresh;
+    /* inside the effect grace: a just-spent grant keeps its slot (its EFFECT may still come) */
+    KX_CHECK(kx_grant_issue(&T, &in, ih, PHASH, rule, 250, AGENT, id, T0 + 500 * MS, &fresh) == KX_R_GRANT_TABLE_FULL);
+    /* past it, 1024 new grants fit without waiting for the 60 s tombstone horizon */
+    uint64_t later = T0 + 250 * MS + KX_GRANT_EFFECT_GRACE_NS + MS;
+    uint32_t ok = 0;
+    static kx_grant_t g2[KX_GRANT_SLOTS];
+    for (uint32_t n = 0; n < KX_GRANT_SLOTS; n++) {
+        gid(id, 20000 + n);
+        if (kx_grant_issue(&T, &in, ih, PHASH, rule, 250, AGENT, id, later, &g2[n]) == KX_R_OK) ok++;
+    }
+    KX_CHECK(ok == KX_GRANT_SLOTS && T.outstanding == KX_GRANT_SLOTS);
+    /* every old grant is now evicted: a replay is UNKNOWN, still refused */
+    KX_CHECK(redeem(&g[0], &in, AGENT, later + MS, &tel) == KX_R_GRANT_UNKNOWN);
+    KX_CHECK(redeem(&g[KX_GRANT_SLOTS - 1], &in, AGENT, later + MS, &tel) == KX_R_GRANT_UNKNOWN);
+    /* live grants are never evicted: the table is now really full */
+    gid(id, 99998);
+    KX_CHECK(kx_grant_issue(&T, &in, ih, PHASH, rule, 250, AGENT, id, later + 2 * MS, &fresh) == KX_R_GRANT_TABLE_FULL);
+    /* and the new ones all still redeem */
+    KX_CHECK(redeem(&g2[0], &in, AGENT, later + 3 * MS, &tel) == KX_R_OK);
+    KX_CHECK(redeem(&g2[KX_GRANT_SLOTS - 1], &in, AGENT, later + 3 * MS, &tel) == KX_R_OK);
+}
+
 static uint64_t rng = 0x243F6A8885A308D3ull;
 static uint32_t rnd(uint32_t n) {
     rng = rng * 6364136223846793005ull + 1442695040888963407ull;
@@ -260,6 +305,7 @@ int main(void) {
     test_exactness_and_binding();
     test_interlock_toctou();
     test_capacity();
+    test_tombstone_reuse();
     test_never_twice();
     KX_TEST_DONE();
 }

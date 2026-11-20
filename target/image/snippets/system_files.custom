@@ -6,6 +6,7 @@
 [perms=0755] bin/kervix/kx-supervisor=/work/build/qnx-x86_64/target/kx-supervisor/kx-supervisor
 [perms=0755] bin/kervix/kxgw=/work/build/qnx-x86_64/target/kxgw/kxgw
 [perms=0755] bin/kervix/kx-selftest=/work/build/qnx-x86_64/target/kx-selftest/kx-selftest
+[perms=0755] bin/kervix/kx-bench=/work/build/qnx-x86_64/target/kx-bench/kx-bench
 [perms=0755] bin/kervix/kx-rogue=/work/build/qnx-x86_64/target/kx-rogue/kx-rogue
 #if defined(OPT_SECPOL_secure)
 # secpolgenerate is only in the IFS for open/develop images; the secure image

@@ -217,7 +217,7 @@ PROPOSE ─▶ 1 validate struct (abi, action ∈ catalog, n_params, ranges)    
         ─▶ 9 MsgReply(decision)
 ```
 
-Bounds: catalog ≤ 64 actions; ≤ 256 rules total; ≤ 8 predicates per rule; grant table 1024 slots (open addressing, keyed by grant_id, expired entries reaped lazily and by a 10 ms timer pulse); escalation slots 32; capsule ring 4096 records.
+Bounds: catalog ≤ 64 actions; ≤ 256 rules total; ≤ 8 predicates per rule; grant table 1024 slots (open addressing, keyed by grant_id, expired entries reaped lazily and by a 10 ms timer pulse; tombstones reused under pressure once their effect grace has passed); escalation slots 32; capsule ring 4096 records.
 
 **Policy evaluation is pure:** `kx_verdict_t kx_eval(const kx_policy*, const kx_intent*, const kx_telemetry*, kx_mono_ns now)`. There is no I/O, no clock read inside and no allocation. This is what makes deterministic replay possible (§9).
 
@@ -465,6 +465,25 @@ Tampering detected by `tests/target/ledger.sh`: edited evidence (with and withou
 | **Total PROPOSE** | **< 50 µs** | |
 | **REDEEM** (incl. interlock) | **< 30 µs** | |
 | Ed25519 sign + append (async) | ~150 µs, off the hot path | Writer thread prio 15 |
+
+**Measured (M3), `kx-bench` on QNX 8.0 in QEMU/TCG, 2 vCPU.** These are emulated numbers and not representative; the RPi4 figures will replace them (H3). The flood/idle ratio is the meaningful result. Full output: `docs/evidence/bench-qnx-qemu.txt`.
+
+| Measure | p50 | p99 |
+|---|---|---|
+| PROPOSE inside kervixd (validate, hash, policy, grant, enqueue) | 39 µs | 167 µs |
+| PROPOSE client round trip | 90 µs | 272 µs |
+| PROPOSE → EXECUTE → actuated (grant, redeem with interlock re-check) | 525 µs | 1.0 ms |
+| Driver HMI round trip, authority idle | 81 µs | 173 µs |
+| Driver HMI round trip, **4 agent threads flooding 16.6k proposals/s** | 80 µs | 178 µs (**1.03× idle**) |
+
+- **Under the flood, K3 back-pressure works as designed:**
+  - The signer (~370 capsules/s under TCG) falls behind, and the ledger health reads UNHEALTHY while the queue is ≥ 90 %.
+  - Non-terminal decisions are dropped and counted; ALLOW and ESCALATE become `LEDGER_PRESSURE`.
+  - Queue-fill health is **not latched**: 3.8 s after the flood the ledger is back to OK. Only signing or storage errors latch.
+- **Found by kx-bench and fixed:**
+  - **Problem:** spent and expired grants kept their table slot as a tombstone for 60 s, so a burst of more than 512 grants per minute locked out every later grant (`GRANT_TABLE_FULL`), including driver-approved ones.
+  - **Fix:** the table now has the documented 1024 slots. When it is full, a tombstone more than 1 s past its deadline (`KX_GRANT_EFFECT_GRACE_NS`; by then the actuator's EFFECT can no longer arrive) is reused, oldest first. Live grants are never evicted.
+  - **Effect on replays:** a replay of an evicted grant is still refused, as `GRANT_UNKNOWN` instead of `GRANT_SPENT`.
 
 QoS by **priority inheritance**:
 - Server threads run at the sender's priority, so agent requests (prio 10) cannot delay HMI resolves (30) or actuator redeems (≥40), even when the agent channel is saturated.
