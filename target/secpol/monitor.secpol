@@ -1,0 +1,28 @@
+# secpolgenerate in MONITOR mode on the secure image (QNX docs: "System
+# monitoring using secpolgenerate"). It does not change the policy; it records
+# every refusal in /dev/secpolgenerate/errors, which is how tests/target/secpol.sh
+# proves "zero denials for legitimate roles" and shows what kx-rogue was refused.
+# It cannot learn its own rules, so they are written here (docs minimum + the
+# filesystem and logger it uses).
+type secpolgen_t;
+allow secpolgen_t self:ability {
+    nonroot
+    pathspace
+    mem_phys
+    prot_exec
+    interrupt:2147418112
+    io
+    trace
+    map_fixed
+    public_channel
+    channel_connect:devb_t,slogger_t
+};
+allow_attach secpolgen_t /dev/secpolgenerate/...;
+allow_attach secpolgen_t /dev/name/local/_tracelog;
+
+# the workshop operator may read the refusal log (the root shell may not:
+# sshd_t -> user_root_t must not gain abilities, and it needs none here)
+allow operator_t secpolgen_t:channel connect;
+# the admin shell may list the monitor process (pidin); it runs as uid 40,
+# which the harvest never saw because the open image has no monitor
+allow user_root_t self:ability { xprocess_query:40 };

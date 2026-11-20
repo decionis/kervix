@@ -25,6 +25,12 @@ These notes are the gotchas found while building Kervix. Each one becomes a call
 - Channel typing stops channels and paths even for root, but not shared memory, `/proc/<pid>/as` or signals. Give the confined process its own uid (`on -T agentgw_t -u 400:400`) and build the image with `--secure-procfs=yes`.
 - **Gotcha:** `channel_connect` is checked when a connection is made. A file connection inherited across spawn (e.g. a boot script's `> /tmp/x.log`) is reused without a new check, so a daemon can appear to need no `devb_t` rule. Write the rule anyway and don't leak fds into confined processes.
 - After editing `/data/var/secpol/config` (`type <t> restricted`), reboot; `secpolgenerate` reads it at start.
+- **Going secure (M2):** harvest with a base policy + your types `restricted`. Then `/dev/secpolgenerate/policy` holds only the *missing* rules, which are the system half. Gotchas:
+  - Drop the `default` type block: it only holds the open image's `libsecpol-gen` symlink, and `secpolcompile` rejects it on secure images (`undefined type 'default'`).
+  - secpolgenerate repeats your `allow X ch_t:channel connect` grants in `self:ability { channel_connect:ch_t }` form. Filter your own types out of the harvest instead of keeping both.
+  - Secure images don't ship `secpolgenerate`. To keep a refusal log, install it from a snippet with an explicit source (`bin/secpolgenerate=bin/secpolgenerate`; a bare name was silently skipped) and run it in monitor mode under its own type (rules from the docs).
+  - `secpolcompile` enforces **no privilege gain** across `settypeid`: `sshd_t` -> `user_root_t` means the root shell can't get a right `sshd_t` lacks. Give such rights to a dedicated type (`on -T operator_t ...`).
+  - Anything the harvest never saw is refused. Here the root shell's `pidin` was refused `xprocess_query:40` on the monitor's uid. Run everything the secure image will do, harness included, before harvesting.
 
 ## qcrypto (S3)
 - The baseline image ships `/proc/boot/qcrypto.conf` (`openssl-3 tags=*`), the plugin and `libcrypto.so.3`. Just link `-lqcrypto`.

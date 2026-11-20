@@ -7,6 +7,11 @@ waitfor /dev/sdv/telemetry 5
 waitfor /dev/kervix/redeem 10
 /system/bin/kervix/sdv_actuatord > /tmp/sdv_actuatord.log 2>&1 &
 #else
+#if defined(OPT_SECPOL_secure)
+# monitor only: records refusals in /dev/secpolgenerate/errors
+on -T secpolgen_t -u 40 /system/bin/secpolgenerate
+waitfor /dev/secpolgenerate/errors 5
+#endif
 on -T vsim_t /system/bin/kervix/vsimd > /tmp/vsimd.log 2>&1 &
 waitfor /dev/sdv/telemetry 5
 on -T kervix_t /system/bin/kervix/kervixd > /tmp/kervixd.log 2>&1 &

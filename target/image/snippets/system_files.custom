@@ -4,3 +4,8 @@
 [perms=0755] bin/kervix/sdv_actuatord=/work/build/qnx-x86_64/target/sdv_actuatord/sdv_actuatord
 [perms=0755] bin/kervix/kxctl=/work/build/qnx-x86_64/target/kxctl/kxctl
 [perms=0755] bin/kervix/kx-rogue=/work/build/qnx-x86_64/target/kx-rogue/kx-rogue
+#if defined(OPT_SECPOL_secure)
+# secpolgenerate is only in the IFS for open/develop images; the secure image
+# runs it in monitor mode (target/secpol/monitor.secpol)
+[perms=0555] bin/secpolgenerate=bin/secpolgenerate
+#endif

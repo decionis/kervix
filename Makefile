@@ -1,6 +1,6 @@
 # Kervix top-level shortcuts. Host targets run natively. QNX targets run in
 # the qnx-build container (docker/qnx-build.sh), which works on macOS and Linux.
-.PHONY: help host asan wasm test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 target-escalation target-ledger target-secpol tsan clean
+.PHONY: help host asan wasm test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 target-escalation target-ledger target-secpol target-secpol-secure secpol-harvest tsan clean
 
 ARCHES ?= x86_64 aarch64le
 KX_CORE_TESTS = libkxcore/tests/test_catalog libkxcore/tests/test_policy libkxcore/tests/test_sha256 \
@@ -23,6 +23,8 @@ help:
 	@echo "make target-escalation  driver approval / deny / timeout acceptance on QNX"
 	@echo "make target-ledger   signed ledger + kervix-verify + tamper + crash recovery on QNX"
 	@echo "make target-secpol   every component under an enforced secpol type + kx-rogue red team on QNX"
+	@echo "make target-secpol-secure  the same on a --secpol=secure release image (one complete policy)"
+	@echo "make secpol-harvest  regenerate target/secpol/system.secpol with secpolgenerate"
 	@echo "make qemu-stop       stop the VM"
 
 node_modules: package.json package-lock.json
@@ -108,7 +110,14 @@ target-ledger:
 
 # kernel-enforced least privilege: typed boot, legitimate roles, kx-rogue red team
 target-secpol:
-	tests/target/secpol.sh
+	tests/target/secpol.sh open
+
+# release image: --secpol=secure, kervix + monitor + harvested system policy
+target-secpol-secure:
+	tests/target/secpol.sh secure
+
+secpol-harvest:
+	scripts/secpol-harvest.sh
 
 clean:
 	rm -rf build
