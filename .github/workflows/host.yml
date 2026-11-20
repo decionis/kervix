@@ -39,5 +39,5 @@ jobs:
         run: mkdir -p build && make -s tsan
       - name: Spike S5 — AAC draft-04 + COSE conformance vs @decionis/verify
         run: npm run -s spike:s5
-      - name: Intent parity — libkxcore (C) vs @decionis/verify
+      - name: Conformance — intent + capsule parity, libkxcore (C) vs @decionis/verify
         run: npm run -s conformance
