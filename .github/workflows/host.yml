@@ -28,5 +28,11 @@ jobs:
           cmake -S . -B build/host -DCMAKE_BUILD_TYPE=Debug
           cmake --build build/host
           ctest --test-dir build/host --output-on-failure
+      - name: libkxcore under ASan + UBSan
+        run: |
+          cmake -S . -B build/asan -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
+          cmake --build build/asan
+          ctest --test-dir build/asan --output-on-failure
       - name: Spike S5 — AAC draft-04 + COSE conformance vs @decionis/verify
         run: npm run -s spike:s5

@@ -1,0 +1,91 @@
+# Kervix default policy (source of truth for the demo vehicle).
+# Compiled by host/kxpolicy into a signed .kxp bundle (M2). Until the compiler
+# lands, target/libkxcore/tests/default_policy.c builds the same rules in C.
+# A test will then assert that both produce identical policies.
+#
+# Semantics: rules for an action are tried in order, first match wins;
+# no match -> default (BLOCK, DEFAULT_DENY). `any:` = OR group.
+# Units: speed_dkph = km/h x10, soc_dpct = % x10. Constitution K1-K4 run first
+# and cannot be overridden here.
+policy: kervix-default
+version: 1.0.0
+default: { verdict: BLOCK, reason: DEFAULT_DENY }
+
+rules:
+  # ---- cabin / comfort -----------------------------------------------------
+  - { id: climate-any, action: cabin.climate.set, verdict: ALLOW, reason: OK }
+
+  - id: window-high-speed
+    action: cabin.window.set
+    when: [ speed_dkph > 800, param.pos_pct > 50 ]
+    verdict: ESCALATE
+    reason: WINDOW_HIGH_SPEED
+    escalate: { timeout_ms: 15000, require: [ driver_present == 1 ], require_reason: DRIVER_ABSENT }
+  - { id: window-ok, action: cabin.window.set, verdict: ALLOW, reason: OK }
+
+  - { id: hazard-any, action: light.hazard.set, verdict: ALLOW, reason: OK }
+  - { id: charge-limit-any, action: battery.charge_limit.set, verdict: ALLOW, reason: OK }
+
+  # ---- body ------------------------------------------------------------------
+  - id: door-unlock-parked
+    action: body.door.unlock
+    when: [ speed_dkph == 0, gear == P ]
+    verdict: ALLOW
+    reason: OK
+    interlock: [ speed_dkph == 0, gear == P ]
+  - { id: door-unlock-moving, action: body.door.unlock, when: [ speed_dkph > 0 ], verdict: BLOCK, reason: VEHICLE_MOVING }
+  - { id: door-unlock-not-parked, action: body.door.unlock, verdict: BLOCK, reason: NOT_PARKED }
+
+  # ---- ADAS ------------------------------------------------------------------
+  - { id: acc-above-limit, action: adas.acc.set_speed, when: [ param.target_kph > 130 ], verdict: BLOCK, reason: SPEED_ABOVE_LIMIT }
+  - id: acc-large-delta
+    action: adas.acc.set_speed
+    when: [ absdiff(param.target_kph, acc_target_kph) > 20 ]
+    verdict: ESCALATE
+    reason: SPEED_DELTA_LARGE
+    escalate: { timeout_ms: 10000, require: [ driver_present == 1 ], require_reason: DRIVER_ABSENT }
+  - { id: acc-ok, action: adas.acc.set_speed, verdict: ALLOW, reason: OK }
+
+  # ---- privacy ---------------------------------------------------------------
+  - id: location-consent
+    action: telematics.location.share
+    verdict: ESCALATE
+    reason: DRIVER_CONSENT
+    escalate: { timeout_ms: 30000, require: [ driver_present == 1 ], require_reason: DRIVER_ABSENT }
+
+  # ---- diagnostics / security -------------------------------------------------
+  - { id: dtc-service, action: diag.dtc.clear, when: [ service_mode == 1 ], verdict: ALLOW, reason: OK }
+  - { id: dtc-consent, action: diag.dtc.clear, verdict: ESCALATE, reason: DRIVER_CONSENT }
+
+  - { id: immobilizer-moving, action: vehicle.immobilizer.engage, when: [ speed_dkph > 0 ], verdict: BLOCK, reason: VEHICLE_MOVING }
+  - id: immobilizer-parked
+    action: vehicle.immobilizer.engage
+    verdict: ESCALATE
+    reason: DRIVER_CONSENT
+    interlock: [ speed_dkph == 0 ]
+
+  # ---- chassis calibration (workshop only) -------------------------------------
+  - id: brake-cal-service
+    action: chassis.brake.calibration.write
+    when: [ service_mode == 1, speed_dkph == 0, gear == P, park_brake == 1 ]
+    verdict: ALLOW
+    reason: OK
+    interlock: [ service_mode == 1, speed_dkph == 0, gear == P, park_brake == 1 ]
+  - { id: brake-cal-deny, action: chassis.brake.calibration.write, verdict: BLOCK, reason: SERVICE_MODE_REQUIRED }
+
+  # ---- OTA (UN R156: safe state, sufficient energy, user informed) -------------
+  - { id: ota-block-moving, action: ota.ecu.flash, when: [ speed_dkph > 0 ], verdict: BLOCK, reason: R156_NOT_SAFE_STATE }
+  - id: ota-block-not-parked
+    action: ota.ecu.flash
+    when: [ any: [ gear != P, park_brake == 0 ] ]
+    verdict: BLOCK
+    reason: R156_NOT_SAFE_STATE
+  - id: ota-escalate
+    action: ota.ecu.flash
+    when: [ any: [ soc_dpct >= 400, charging == 1 ] ]
+    verdict: ESCALATE
+    reason: DRIVER_CONSENT
+    escalate: { timeout_ms: 30000, require: [ driver_present == 1 ], require_reason: DRIVER_ABSENT }
+    interlock: [ speed_dkph == 0, gear == P, park_brake == 1 ]
+    grant_ttl_ms: 500
+  - { id: ota-low-power, action: ota.ecu.flash, verdict: BLOCK, reason: R156_INSUFFICIENT_POWER }
