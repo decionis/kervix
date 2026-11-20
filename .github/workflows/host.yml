@@ -19,9 +19,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - name: Host TypeScript (bridge) typecheck + tests against the fake target
+        run: npm run -s typecheck && npm run -s test:host
       - name: Codegen is up to date
         run: npm run -s codegen:check
       - name: libkxcore (strict warnings) + unit tests
