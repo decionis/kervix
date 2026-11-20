@@ -1,0 +1,18 @@
+{
+  "name": "@kervix/bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Host bridge: QNX kxgw gateways (TCP JSON lines) <-> dashboard (WebSocket) and agent (REST)",
+  "bin": { "kervix-bridge": "./src/main.ts" },
+  "exports": { ".": "./src/bridge.ts", "./gateway": "./src/gateway.ts", "./fake-target": "./test/fake-target.ts" },
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "start": "node src/main.ts",
+    "fake": "node test/fake-target.ts",
+    "test": "node --test test/*.test.ts"
+  },
+  "dependencies": { "ws": "^8.18.0" },
+  "devDependencies": { "@types/ws": "^8.18.0" }
+}

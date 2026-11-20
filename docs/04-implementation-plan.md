@@ -31,7 +31,7 @@ macOS (M1)
 │      └── qcc / q++ / mkqnximage / CMake  → builds target/ for x86_64 + aarch64le, builds QEMU image
 ├── QEMU (Homebrew)  → boots QNX x86_64 image (TCG), user-mode net with hostfwd:
 │      ssh 2222→22, 7301-7303→kxgw roles
-├── Node 20+ (npm)  → host/ (bridge, dashboard, agent, verify, kxpolicy) runs natively on macOS
+├── Node 22.18+ (npm; TypeScript runs via Node's type stripping)  → host/ (bridge, dashboard, agent, verify, kxpolicy) runs natively on macOS
 └── RPi4 (from ~Nov 27) on Ethernet (USB-C Ethernet adapter or same LAN) → ssh/scp deploy
 ```
 

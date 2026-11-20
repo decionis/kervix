@@ -510,12 +510,19 @@ Out of scope: physical attacks, a kernel compromise, a compromised build chain, 
 
 | Component | Tech | Responsibilities |
 |---|---|---|
-| `host/bridge` | Node 20, TS, `ws` | Three TCP connections to `kxgw` roles; WebSocket fan-out to dashboard; REST for agent/MCP; scenario control |
+| `host/bridge` | Node ≥ 22.18 (TypeScript via type stripping, no build step), `ws` | Four TCP connections to the `kxgw` roles; WebSocket fan-out to dashboards; REST for the agent; scenario control. **Implemented (M3).** |
 | `host/agent` | TS, `@anthropic-ai/sdk` | Vehicle agent (see §14); scripted replay mode |
 | `host/mcp` (Could) | TS, MCP SDK | `kervix-mcp`: one MCP tool per catalog action; every call goes PROPOSE → EXECUTE |
 | `host/dashboard` | Vite + React + React Three Fiber (+ optional `@react-three/xr`) | **Procedural 3D car twin** (primitives only, no external assets), telemetry, conversation, decision feed, escalation card, histogram, ledger explorer |
 | `host/verify` | TS, `@decionis/verify` | `kervix-verify` CLI (§9) |
 | `host/kxpolicy` | TS | Policy compiler, signer, test runner |
+
+**`host/bridge` (implemented, M3):** `node host/bridge/src/main.ts [--target HOST] [--listen HOST:PORT]` (`npm run bridge`).
+- **Target side:** persistent, self-reconnecting connections to the hmi (escalation pushes), observer (telemetry + stats stream) and world gateways. Agent proposals each use **their own short-lived connection**, because an awaiting proposal holds its connection until the driver decides.
+- **Dashboard side:** WebSocket `/ws` sends a `snapshot` (gateways, telemetry, stats, escalations, feed) and then live `telemetry`, `stats`, `escalations`, `gateway` and `feed` events. It accepts `resolve`, `sim`, `propose` and `execute`, each answered by a `reply` with the same `ref`.
+- **Agent side:** REST `GET /api/{health,snapshot,state,feed,escalations}` and `POST /api/{propose,execute,resolve,sim,note}`. Every gateway line lands in a feed of the last 300 events, tagged with its source (`agent`, `dashboard`, …).
+- **Holds no authority:** it routes, records and shows; every verdict comes from `kervixd`. It binds to 127.0.0.1 by default.
+- **Tests:** CI runs `host/bridge/test` against an in-process **fake target**, which speaks the wire format and announces `"fake": true` on hello; it is never used for demos. `make target-bridge` runs it against QNX.
 
 Wire format target↔host: newline-delimited JSON over TCP, one connection per role. `kxgw` is a small C program that converts JSON ⇄ ABI structs with a fixed-schema parser (no general JSON library on target; inputs are bounded at 4 KiB per line).
 

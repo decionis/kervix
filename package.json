@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.18"
   },
   "workspaces": [
     "tools/*",
@@ -18,6 +18,13 @@
     "codegen:check": "node tools/codegen/codegen.mjs --check",
     "spike:s5": "npm run -w spikes/s5-aac start",
     "conformance": "npm run -s -w tests/conformance intent && npm run -s -w tests/conformance capsule && npm run -s -w tests/conformance dossier && npm run -s -w tests/conformance liar",
-    "verify": "node host/verify/kervix-verify.mjs"
+    "verify": "node host/verify/kervix-verify.mjs",
+    "bridge": "node host/bridge/src/main.ts",
+    "test:host": "npm run -s -w host/bridge test",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "@types/node": "^22.0.0"
   }
 }
