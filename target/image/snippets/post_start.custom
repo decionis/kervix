@@ -1,20 +1,31 @@
 # Kervix: start the safety-domain services at boot, each under its own secpol
 # type (types are only applied when a security policy is in use).
 #if defined(OPT_SECPOL_no)
-/system/bin/kervix/vsimd > /tmp/vsimd.log 2>&1 &
+/system/bin/kervix/vsimd -g 403 > /tmp/vsimd.log 2>&1 &
 waitfor /dev/sdv/telemetry 5
 /system/bin/kervix/kx-supervisor -- /system/bin/kervix/kervixd > /tmp/kervixd.log 2>&1 &
 waitfor /dev/kervix/redeem 10
 /system/bin/kervix/sdv_actuatord > /tmp/sdv_actuatord.log 2>&1 &
+waitfor /dev/sdv/actuators 5
+on -u 400:400 -p 10 /system/bin/kervix/kxgw --role agent > /tmp/kxgw-agent.log 2>&1 &
+on -u 401:401 -p 30 /system/bin/kervix/kxgw --role hmi > /tmp/kxgw-hmi.log 2>&1 &
+on -u 402:402 -p 5 /system/bin/kervix/kxgw --role observer > /tmp/kxgw-observer.log 2>&1 &
+on -u 403:403 -p 5 /system/bin/kervix/kxgw --role world > /tmp/kxgw-world.log 2>&1 &
 #else
 #if defined(OPT_SECPOL_secure)
 # monitor only: records refusals in /dev/secpolgenerate/errors
 on -T secpolgen_t -u 40 /system/bin/secpolgenerate
 waitfor /dev/secpolgenerate/errors 5
 #endif
-on -T vsim_t /system/bin/kervix/vsimd > /tmp/vsimd.log 2>&1 &
+on -T vsim_t /system/bin/kervix/vsimd -g 403 > /tmp/vsimd.log 2>&1 &
 waitfor /dev/sdv/telemetry 5
 on -T supervisor_t /system/bin/kervix/kx-supervisor -- /system/bin/kervix/kervixd > /tmp/kervixd.log 2>&1 &
 waitfor /dev/kervix/redeem 10
 on -T actuator_t /system/bin/kervix/sdv_actuatord > /tmp/sdv_actuatord.log 2>&1 &
+waitfor /dev/sdv/actuators 5
+# the gateways to the host domain: one per trust level, each its own type, uid and priority
+on -T agentgw_t -u 400:400 -p 10 /system/bin/kervix/kxgw --role agent > /tmp/kxgw-agent.log 2>&1 &
+on -T hmigw_t -u 401:401 -p 30 /system/bin/kervix/kxgw --role hmi > /tmp/kxgw-hmi.log 2>&1 &
+on -T obsgw_t -u 402:402 -p 5 /system/bin/kervix/kxgw --role observer > /tmp/kxgw-observer.log 2>&1 &
+on -T worldgw_t -u 403:403 -p 5 /system/bin/kervix/kxgw --role world > /tmp/kxgw-world.log 2>&1 &
 #endif

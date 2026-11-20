@@ -3,7 +3,8 @@
  *
  * Channels (one dispatch_t each, so secpol can type them; spike S1):
  *   agent    /dev/kervix/intent  PROPOSE -> kx_decision_t (+ single-use grant on ALLOW)
- *            /dev/kervix/stats   text counters + PROPOSE latency histogram
+ *   observer /dev/kervix/stats   text counters + PROPOSE latency histogram (read-only
+ *            channel of its own: an observer can read it and still never propose)
  *   actuator /dev/kervix/redeem  REDEEM (grant -> OK | GRANT_*), EFFECT (outcome)
  *   hmi      /dev/kervix/escalations  LIST / SUBSCRIBE / RESOLVE (driver approvals)
  *   agent    AWAIT(escalation id): deferred reply until the driver resolves or it times out
@@ -94,12 +95,12 @@ typedef struct {
     resmgr_io_funcs_t      io;
     iofunc_attr_t          attr;
 } node_t;
-enum { CH_AGENT = 0, CH_ACT, CH_HMI, CH__COUNT };
+enum { CH_AGENT = 0, CH_ACT, CH_HMI, CH_OBS, CH__COUNT };
 enum { N_INTENT = 0, N_STATS, N_REDEEM, N_ESC, N__COUNT };
 static dispatch_t *g_disp[CH__COUNT];
 static node_t g_nodes[N__COUNT] = {
     { .path = KX_PATH_INTENT, .chan = CH_AGENT },
-    { .path = KX_PATH_STATS, .chan = CH_AGENT },
+    { .path = KX_PATH_STATS, .chan = CH_OBS },     /* read-only channel: observers can never propose */
     { .path = KX_PATH_REDEEM, .chan = CH_ACT },
     { .path = KX_PATH_ESCALATIONS, .chan = CH_HMI },
 };

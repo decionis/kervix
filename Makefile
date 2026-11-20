@@ -1,6 +1,6 @@
 # Kervix top-level shortcuts. Host targets run natively. QNX targets run in
 # the qnx-build container (docker/qnx-build.sh), which works on macOS and Linux.
-.PHONY: help host asan wasm test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 target-escalation target-ledger target-secpol target-secpol-secure secpol-harvest target-supervisor tsan clean
+.PHONY: help host asan wasm test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 target-escalation target-ledger target-secpol target-secpol-secure secpol-harvest target-supervisor target-kxgw fuzz-wire tsan clean
 
 ARCHES ?= x86_64 aarch64le
 KX_CORE_TESTS = libkxcore/tests/test_catalog libkxcore/tests/test_policy libkxcore/tests/test_sha256 \
@@ -26,6 +26,7 @@ help:
 	@echo "make target-secpol-secure  the same on a --secpol=secure release image (one complete policy)"
 	@echo "make secpol-harvest  regenerate target/secpol/system.secpol with secpolgenerate"
 	@echo "make target-supervisor  J5: kill -9 the authority, fail closed, supervised restart, crash-loop give-up"
+	@echo "make target-kxgw     host <-> target gateways over TCP: roles, escalation push, hostile input"
 	@echo "make qemu-stop       stop the VM"
 
 node_modules: package.json package-lock.json
@@ -47,6 +48,15 @@ tsan:
 	cc -std=c11 -O1 -g -fsanitize=thread -Itarget/include target/libkxsim/tests/test_seqlock.c \
 	  target/libkxcore/src/catalog_gen.c -o build/test_seqlock_tsan -lpthread
 	build/test_seqlock_tsan
+
+# libFuzzer on the gateway's JSON-lines parser (needs clang with libFuzzer, e.g. Linux; FUZZ_SECONDS=60)
+FUZZ_SECONDS ?= 60
+fuzz-wire:
+	mkdir -p build/fuzz-corpus
+	clang -std=c11 -g -O1 -fsanitize=fuzzer,address,undefined -Itarget/include target/kxgw/tests/fuzz_wire.c \
+	  target/kxgw/wire.c target/libkxcore/src/jcs.c target/libkxcore/src/sha256.c target/libkxcore/src/catalog_gen.c \
+	  -o build/fuzz_wire
+	build/fuzz_wire -max_total_time=$(FUZZ_SECONDS) -max_len=4200 build/fuzz-corpus
 
 # libkxcore -> WebAssembly replay engine for kervix-verify (host/verify/kxcore.wasm)
 wasm:
@@ -112,6 +122,10 @@ target-ledger:
 # kernel-enforced least privilege: typed boot, legitimate roles, kx-rogue red team
 target-secpol:
 	tests/target/secpol.sh open
+
+# the four network gateways end to end (host TCP -> kxgw -> kervixd / actuator / vsimd)
+target-kxgw:
+	tests/target/kxgw.sh
 
 # release image: --secpol=secure, kervix + monitor + harvested system policy
 target-secpol-secure:

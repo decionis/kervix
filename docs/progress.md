@@ -18,6 +18,7 @@ One entry per milestone step: done / slipped / cut. Plan: `04-implementation-pla
 | Fri 2026-11-20 | M2 | secpol PR A: every component under an enforced type, `kx-rogue` red team (#17). Results: 9/10 attacks open without enforcement → 3/10 as root (all 7 channel/path attacks kernel-blocked) → **0/10 for the deployed agent**. Found: inherited fds bypass `channel_connect`. | — | — |
 | Fri 2026-11-20 | M2 | secpol PR B: **`--secpol=secure` release image** (#18): harvested system policy + monitor mode; every process typed; even root cannot start trusted types. 18/18 on QNX. | Docker Desktop hung a third time (restart) | — |
 | Fri 2026-11-20 | M2 | **U1** upstream: `follows` + `vehicle.` effect namespace registered in `@decionis/verify` and the producer validator (decionis/Decionis#1752, in review). | Needs a published `@decionis/verify` release before Kervix can pin it | — |
+| Fri 2026-11-20 | M3 | **`kxgw`**: four network gateways (agent / hmi / observer / world), each with its own secpol type, uid and priority. Fixed-schema JSON-lines parser with host tests + libFuzzer in CI. Escalations pushed to the HMI by kervixd's doorbell pulse. Stats on a read-only channel (`kx_obs_ch_t`). `make target-kxgw` 23/23 on QNX; all M1/M2 suites still PASS (open and secure). Found + fixed: non-root sockets need `network/jailroot`; the secure image's admin shell needed `xprocess_query` for the gateway uids (re-harvested). | — | — |
 
 ## Schedule status (end of Fri 2026-11-20)
 

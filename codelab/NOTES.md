@@ -94,3 +94,11 @@ These notes are the gotchas found while building Kervix. Each one becomes a call
 - Export a setter API (`__attribute__((export_name(...)))`) rather than sharing struct layouts with JavaScript. 64-bit values cross as BigInt.
 - Apple clang ships without the wasm backend. A native-arch `ubuntu:24.04` container with `clang lld` builds it in seconds, and the Linux CI runner just needs `apt install lld`.
 
+
+## Network gateways (kxgw)
+- **A typed, non-root process that opens a socket needs `network/jailroot`.** io-sock asks for it on every socket of a non-root caller. The refusal surfaces as `EPERM` from `bind`/`listen`, not from `socket()`. The log names it: `failed to use ability network/jailroot as non-root`. Grant it explicitly: `allow agentgw_t self:ability { nonroot network/jailroot };`, plus `allow agentgw_t io_sock_t:channel connect;`.
+- An `ability` may be declared only once across the files you concatenate into one policy. When a hand-written policy takes over a declaration that `secpolgenerate` harvested (`ability network/jailroot allow { root nonroot };`, `type io_sock_t;`), delete it from the harvested half.
+- **Read-only access is a channel type, not a flag.** `/dev/kervix/stats` used to share the agent channel, so anything that could read stats could also propose. Moving it onto its own dispatch channel (`kx_obs_ch_t`) means the observer's type can read and the kernel refuses it the authority's propose channel (`EPERM`).
+- Uid separation for a node you write: give the gateway its own uid and set the node's group (`attr.gid`) instead of running the gateway as root. Running as root would let it signal or `/proc`-read the daemons, because those are uid matters, not secpol.
+- Escalation push with no polling: each HMI connection gets a thread that `MsgReceivePulse()`s a private channel registered with the authority (`MsgRegisterEvent` + subscribe devctl). A `TimerTimeout` every 2 s checks that the subscription is still alive and resubscribes after an authority restart.
+- Keep the gateway dumb: it forwards a replayed grant instead of filtering it. The authority refuses it **and records the attempt**. A smart gateway would hide attacks from the ledger.

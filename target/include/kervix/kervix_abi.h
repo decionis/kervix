@@ -4,7 +4,7 @@
  * Each trust level is its own dispatch channel, so the security policy can
  * type it (spike S1). The kernel refuses connects from types without a rule:
  *   agent channel     /dev/kervix/intent   PROPOSE        (agent gateways, kxctl)
- *                     /dev/kervix/stats    read (text)
+ *   observer channel  /dev/kervix/stats    read (text)    (observers, agents, HMI, operator)
  *   actuator channel  /dev/kervix/redeem   REDEEM, EFFECT (sdv_actuatord only)
  *   actuator bus      /dev/sdv/actuators   EXECUTE        (agent gateway with a grant)
  *   hmi channel       /dev/kervix/escalations  read (text) | LIST | SUBSCRIBE | RESOLVE

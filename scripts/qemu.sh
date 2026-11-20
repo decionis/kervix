@@ -3,7 +3,7 @@
 # Mirrors mkqnximage's qemu/runimage, but uses QEMU user-mode networking with
 # port forwards (no bridge/tap needed, works on macOS):
 #   localhost:2222 -> target:22 (ssh)
-#   localhost:7301..7303 -> target kxgw roles (agent, hmi, observer)
+#   localhost:7301..7304 -> target kxgw roles (agent, hmi, observer, world)
 #
 #   scripts/qemu.sh image     # build/refresh the image (in the qnx-build container)
 #                             # env: KX_MKQNXIMAGE_EXTRA=<opts>, KX_SNIPPETS=<dir of *.custom>
@@ -56,7 +56,7 @@ cmd_start() {
   [ -f "$OUT/ifs.bin" ] && [ -f "$OUT/disk-qemu.vmdk" ] || die "no image in $OUT; run: scripts/qemu.sh image"
   [ "$ARCH" = x86_64 ] || die "only x86_64 is wired up (aarch64 virt needs extra BSP packages)"
   local fwd="hostfwd=tcp:127.0.0.1:${SSH_PORT}-:22"
-  for p in 7301 7302 7303; do fwd+=",hostfwd=tcp:127.0.0.1:${p}-:${p}"; done
+  for p in 7301 7302 7303 7304; do fwd+=",hostfwd=tcp:127.0.0.1:${p}-:${p}"; done
   : > "$LOG"
   ( cd "$VM" && qemu-system-x86_64 \
       -smp 2 -cpu max -m 1G \
