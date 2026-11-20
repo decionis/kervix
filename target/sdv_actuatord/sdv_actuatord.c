@@ -1,7 +1,10 @@
 /*
  * sdv_actuatord: the actuator bus gateway (QNX 8.0 resource manager).
  *
- *   /dev/sdv/actuators  EXECUTE(grant, command) -> devctl ret_val = kx_reason_t
+ *   /dev/sdv/actuators      EXECUTE(grant, command) -> devctl ret_val = kx_reason_t
+ *   /dev/sdv/actuators/raw  RAW_APPLY(command), NO grant: the maintenance path every
+ *                           real ECU has. Attached on its own channel, whose secpol type
+ *                           no process type may connect to.
  *
  * The ONLY process allowed to move the vehicle (/dev/sdv/sim/actuate; secpol
  * enforces it in M2). For every EXECUTE it:
@@ -32,9 +35,9 @@
 static int g_verbose;
 static int g_redeem_fd = -1, g_bus_fd = -1;
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
-static resmgr_connect_funcs_t g_cf;
-static resmgr_io_funcs_t g_io;
-static iofunc_attr_t g_attr;
+static resmgr_connect_funcs_t g_cf, g_rcf;
+static resmgr_io_funcs_t g_io, g_rio;
+static iofunc_attr_t g_attr, g_rattr;
 
 static const char *rname(uint16_t r) {
     const kx_reason_spec_t *s = kx_catalog_reason(r);
@@ -106,6 +109,33 @@ static int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, void *ocb_v) {
     return _RESMGR_PTR(ctp, &msg->o, sizeof msg->o);
 }
 
+/* Raw path: actuates WITHOUT Kervix. Kernel-level policy is its only guard. */
+static int io_devctl_raw(resmgr_context_t *ctp, io_devctl_t *msg, void *ocb_v) {
+    int st = iofunc_devctl_default(ctp, msg, ocb_v);
+    if (st != _RESMGR_DEFAULT) return st;
+    if (msg->i.dcmd != KX_DCMD_RAW_APPLY) return ENOSYS;
+    kx_intent_t cmd;
+    memcpy(&cmd, _DEVCTL_DATA(msg->i), sizeof cmd);
+    pthread_mutex_lock(&g_lock);
+    int ret = 0;
+    int rc = call(&g_bus_fd, KX_VSIM_PATH_ACTUATE, KX_DCMD_SIM_APPLY, &cmd, sizeof cmd, &ret);
+    pthread_mutex_unlock(&g_lock);
+    printf("sdv_actuatord: RAW maintenance actuation from pid=%d action=%u -> %s\n", ctp->info.pid, cmd.action,
+           rc == EOK ? "applied" : strerror(rc));
+    memset(&msg->o, 0, sizeof msg->o);
+    return rc == EOK ? _RESMGR_PTR(ctp, &msg->o, sizeof msg->o) : rc;
+}
+
+static void *serve_raw(void *arg) {
+    dispatch_t *d = arg;
+    dispatch_context_t *c = dispatch_context_alloc(d);
+    for (;;) {
+        if (dispatch_block(c) == NULL) continue;
+        dispatch_handler(c);
+    }
+    return NULL;
+}
+
 int main(int argc, char **argv) {
     int opt;
     while ((opt = getopt(argc, argv, "v")) != -1) {
@@ -126,8 +156,20 @@ int main(int argc, char **argv) {
         fprintf(stderr, "sdv_actuatord: attach %s: %s\n", KX_PATH_ACTUATORS, strerror(errno));
         return 1;
     }
+    /* raw maintenance path on its OWN channel, so secpol can type it separately */
+    dispatch_t *rdpp = dispatch_create();
+    iofunc_func_init(_RESMGR_CONNECT_NFUNCS, &g_rcf, _RESMGR_IO_NFUNCS, &g_rio);
+    g_rio.devctl = io_devctl_raw;
+    iofunc_attr_init(&g_rattr, S_IFCHR | 0666, NULL, NULL);
+    if (rdpp == NULL ||
+        secpol_resmgr_attach(NULL, rdpp, &ra, KX_PATH_ACTUATORS_RAW, _FTYPE_ANY, 0, &g_rcf, &g_rio, &g_rattr, NULL) == -1) {
+        fprintf(stderr, "sdv_actuatord: attach %s: %s\n", KX_PATH_ACTUATORS_RAW, strerror(errno));
+        return 1;
+    }
     secpol_transition_type(NULL, NULL, 0);
-    printf("sdv_actuatord: ready on %s pid=%d\n", KX_PATH_ACTUATORS, getpid());
+    pthread_t rth;
+    pthread_create(&rth, NULL, serve_raw, rdpp);
+    printf("sdv_actuatord: ready on %s (+ raw maintenance path) pid=%d\n", KX_PATH_ACTUATORS, getpid());
     dispatch_context_t *ctp = dispatch_context_alloc(dpp);
     for (;;) {
         if (dispatch_block(ctp) == NULL) continue;

@@ -21,6 +21,10 @@ These notes are the gotchas found while building Kervix. Each one becomes a call
 - The sender's type is in **`ctp->info.type_id`** on every message. `ConnectClientInfoExtraArgs(..., &type_id)` returned `0xFFFFFFFF` in our tests.
 - QNX 8 resmgr I/O handlers take `void *ocb` unless you define `IOFUNC_OCB_T`. Casting avoids `-Werror=incompatible-pointer-types`.
 - Server→client notifications: the client must `MsgRegisterEvent(&ev, fd)` before sending the event. This works across typed channels.
+- **Least privilege at boot (M2):** start daemons with `on -T <type>` in `post_start.custom`, then `waitfor <path>` before starting the next one. A daemon denied `random_t` or `slogger_t` fails closed at startup, so harvest those rules from `slog2info` first.
+- Channel typing stops channels and paths even for root, but not shared memory, `/proc/<pid>/as` or signals. Give the confined process its own uid (`on -T agentgw_t -u 400:400`) and build the image with `--secure-procfs=yes`.
+- **Gotcha:** `channel_connect` is checked when a connection is made. A file connection inherited across spawn (e.g. a boot script's `> /tmp/x.log`) is reused without a new check, so a daemon can appear to need no `devb_t` rule. Write the rule anyway and don't leak fds into confined processes.
+- After editing `/data/var/secpol/config` (`type <t> restricted`), reboot; `secpolgenerate` reads it at start.
 
 ## qcrypto (S3)
 - The baseline image ships `/proc/boot/qcrypto.conf` (`openssl-3 tags=*`), the plugin and `libcrypto.so.3`. Just link `-lqcrypto`.
