@@ -15,9 +15,9 @@ AI agents *propose* vehicle actions. Kervix decides in microseconds, on live veh
 | ![Procedural 3D twin: front-left door unlocked (green), front-left window down, hazards on, charging](docs/images/twin.png) | ![The twin during an approved OTA flash: body glows, halo turns, toast shows ALLOW HUMAN_APPROVED](docs/images/twin-ota-approved.png) |
 | The procedural 3D twin renders **telemetry, never requests**. An action shows up only after Kervix allowed it, the actuator applied it, and the simulator published the new state. Here: front-left door unlocked (green light), its window lowered, hazards on, charge port glowing. | The driver approved; the agent's waiting request received a fresh grant and executed. The vehicle reports the flash in progress (blue glow, turning halo). The approval is a signed capsule naming the human approver. |
 
-**The driver's on-screen notification.** Actions that need a human are pushed to the HMI by a kernel pulse (no polling). They are re-checked on live vehicle state before any grant is issued, and refused if nobody answers in time:
+**The driver's on-screen notification.** Actions that need a human are pushed to the HMI by a kernel pulse (no polling). The driver reads them in their own terms: what would happen, why they are asked, what it means for them, and that not answering means no. Rule ids, action ids and digests stay in the footer and the signed ledger. On approval, the action is re-checked on live vehicle state before any grant is issued:
 
-![Driver approval card: ESCALATE ota.ecu.flash, requested by agent:cabin-copilot, Approve / Deny, countdown to fail-closed](docs/images/driver-approval.png)
+![Driver approval card: "Your approval is needed. Install a software update on the brake controller. Requires your consent. Requested by your in-car assistant. The car stays parked and can't be driven while it installs. This can't be undone." Approve / Deny, countdown](docs/images/driver-approval.png)
 
 If the authority itself dies, nothing moves: [AUTHORITY OFFLINE · ACTUATION LOCKED](docs/evidence/dashboard-qnx-qemu-authority-offline.png), until `kx-supervisor` brings it back (≈ 0.1 s under emulation) with the restart recorded in the signed ledger.
 
