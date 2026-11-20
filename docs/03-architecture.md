@@ -519,6 +519,21 @@ Out of scope: physical attacks, a kernel compromise, a compromised build chain, 
 
 Wire format target↔host: newline-delimited JSON over TCP, one connection per role. `kxgw` is a small C program that converts JSON ⇄ ABI structs with a fixed-schema parser (no general JSON library on target; inputs are bounded at 4 KiB per line).
 
+**Implemented (M3): `kxgw`** (`target/kxgw`, `tests/target/kxgw.sh`, `make target-kxgw`, PASS on QNX 8.0 / QEMU with every Kervix type enforced). One process per role, started at boot:
+
+| Role | Port | secpol type | uid | Prio | Ops | Kernel lets it reach |
+|---|---|---|---|---|---|---|
+| agent | 7301 | `agentgw_t` | 400 | 10 | `hello propose execute state stats` | `kx_agent_ch_t` (propose, await), `act_bus_ch_t` (execute with a grant), `kx_obs_ch_t` |
+| hmi | 7302 | `hmigw_t` | 401 | 30 | `hello escalations resolve state stats` + pushed `escalations` | `kx_hmi_ch_t`, `kx_obs_ch_t` |
+| observer | 7303 | `obsgw_t` | 402 | 5 | `hello subscribe state stats` + pushed `telemetry` (1–50 Hz) and `stats` (1 Hz) | `kx_obs_ch_t` only: **it cannot propose** |
+| world | 7304 | `worldgw_t` | 403 | 5 | `hello sim state` | `vsim_ctl_ch_t` only (the demo's road and driver; not a vehicle interface) |
+
+- `/dev/kervix/stats` moved to its own read-only dispatch channel, `kx_obs_ch_t`, so read access is a channel type rather than an application-level check.
+- The parser (`target/kxgw/wire.c`) is portable, host-tested (`test_wire`) and fuzzed in CI (`make fuzz-wire`, libFuzzer + ASan/UBSan). It enforces one object per line, ≤ 4 KiB, a fixed key set (unknown or duplicate keys are errors), printable-ASCII strings, safe integers, and one nested `params` object. It has no recursion and no allocation.
+- **Grants never leave the vehicle.** The host sees a `grant_id`, and the gateway keeps the MAC'd grant. Every `execute` is forwarded, so a replay is refused by the authority and recorded, not filtered.
+- **Responses:** each request gets one or more lines carrying its `id`, and the last has `"done":true`. Example: `propose` with `await` + `exec` yields `decision` (ESCALATE, `done:false`), then `resolution`, then `execution`.
+
+
 ---
 
 ## 14. AI agent design

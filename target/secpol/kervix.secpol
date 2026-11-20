@@ -13,10 +13,12 @@ type agentgw_t;                           # AI-agent gateway: untrusted
 type hmigw_t;                             # driver HMI gateway
 type operator_t;                          # workshop / test operator console
 type supervisor_t;                        # kx-supervisor: restarts kervixd, nothing else
+type obsgw_t;                             # observer gateway (dashboard telemetry + stats): read-only
+type worldgw_t;                           # demo world gateway: drives the simulated road, never the vehicle
 
 # ---- channel types (one per trust boundary) -------------------------------
 type vsim_tel_ch_t;  type vsim_ctl_ch_t;  type vsim_act_ch_t;
-type kx_agent_ch_t;  type kx_act_ch_t;    type kx_hmi_ch_t;
+type kx_agent_ch_t;  type kx_act_ch_t;    type kx_hmi_ch_t;   type kx_obs_ch_t;
 type act_bus_ch_t;   type act_raw_ch_t;
 
 # ---- who may attach which path, and the type its channel gets -------------
@@ -24,20 +26,22 @@ allow_attach vsim_t     /dev/sdv/telemetry       vsim_tel_ch_t;
 allow_attach vsim_t     /dev/sdv/sim/ctl         vsim_ctl_ch_t;
 allow_attach vsim_t     /dev/sdv/sim/actuate     vsim_act_ch_t;
 allow_attach kervix_t   /dev/kervix/intent       kx_agent_ch_t;
-allow_attach kervix_t   /dev/kervix/stats        kx_agent_ch_t;
+allow_attach kervix_t   /dev/kervix/stats        kx_obs_ch_t;
 allow_attach kervix_t   /dev/kervix/redeem       kx_act_ch_t;
 allow_attach kervix_t   /dev/kervix/escalations  kx_hmi_ch_t;
 allow_attach actuator_t /dev/sdv/actuators       act_bus_ch_t;
 allow_attach actuator_t /dev/sdv/actuators/raw   act_raw_ch_t;
 
 # ---- topology: every connect not listed here is refused by the kernel -----
-allow { agentgw_t hmigw_t operator_t }            kx_agent_ch_t:channel connect;  # propose, await, stats
+allow { agentgw_t hmigw_t operator_t }            kx_agent_ch_t:channel connect;  # propose, await
+allow { agentgw_t hmigw_t operator_t obsgw_t }    kx_obs_ch_t:channel connect;    # stats (read-only channel)
 allow { actuator_t actuator_run_t }               kx_act_ch_t:channel connect;    # redeem + effects
 allow { hmigw_t operator_t }                      kx_hmi_ch_t:channel connect;    # driver approvals
 allow { agentgw_t operator_t }                    act_bus_ch_t:channel connect;   # execute WITH a grant
 allow { actuator_t actuator_run_t }               vsim_act_ch_t:channel connect;  # only the actuator moves the car
 allow { kervix_t kervix_run_t agentgw_t hmigw_t operator_t } vsim_tel_ch_t:channel connect;
-allow operator_t                                  vsim_ctl_ch_t:channel connect;  # test harness drives the scenario
+allow { operator_t worldgw_t }                    vsim_ctl_ch_t:channel connect;  # test harness / demo world drive the scenario
+# obsgw_t reads telemetry from the read-only shm segment and needs no vsim channel
 # act_raw_ch_t: deliberately NO connect rule for any type. Bypassing Kervix is impossible, not just forbidden.
 
 # ---- one-way privilege drop after initialisation ---------------------------
@@ -60,6 +64,7 @@ type random_t;
 type slogger_t;
 type devb_t;
 type pipe_t;
+type io_sock_t;
 allow { kervix_t kervix_run_t agentgw_t hmigw_t operator_t } random_t:channel connect;  # DRBG entropy; intent UUIDs
 allow { kervix_t kervix_run_t operator_t } devb_t:channel connect;        # ledger + vehicle key; operator export
 # NOTE secpol checks channel_connect when a connection is ATTACHED. A process that
@@ -67,5 +72,8 @@ allow { kervix_t kervix_run_t operator_t } devb_t:channel connect;        # ledg
 # not leak fds into restricted processes. Kervix daemons get explicit rules here
 # rather than relying on how they happened to be started.
 allow supervisor_t pipe_t:channel connect;                                # kervixd's output pipe
-allow { vsim_t vsim_run_t kervix_t kervix_run_t actuator_t actuator_run_t agentgw_t hmigw_t operator_t supervisor_t }
-      slogger_t:channel connect;                                          # slog2 logging
+allow { agentgw_t hmigw_t obsgw_t worldgw_t } io_sock_t:channel connect;  # kxgw: TCP to the host domain
+ability network/jailroot allow { root nonroot };                          # io-sock asks it of every non-root socket user
+allow { agentgw_t hmigw_t obsgw_t worldgw_t } self:ability { nonroot network/jailroot };
+allow { vsim_t vsim_run_t kervix_t kervix_run_t actuator_t actuator_run_t agentgw_t hmigw_t operator_t supervisor_t
+        obsgw_t worldgw_t } slogger_t:channel connect;                    # slog2 logging

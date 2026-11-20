@@ -9,7 +9,8 @@
  *  - three resource-manager paths on three dispatch channels (one channel
  *    type each under secpol): see kervix/vsim_abi.h
  *
- * usage: vsimd [-r rate_hz] [-s scenario] [-v]
+ * usage: vsimd [-r rate_hz] [-s scenario] [-g ctl_gid] [-v]
+ *   -g: group that may write /dev/sdv/sim/ctl (the demo's world gateway, kxgw --role world)
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -269,12 +270,14 @@ static void *serve(void *arg) {
 int main(int argc, char **argv) {
     unsigned rate = 100;
     const char *scenario = "park";
+    int ctl_gid = -1;
     int opt;
-    while ((opt = getopt(argc, argv, "r:s:v")) != -1) {
+    while ((opt = getopt(argc, argv, "r:s:g:v")) != -1) {
         if (opt == 'r') rate = (unsigned)atoi(optarg);
         else if (opt == 's') scenario = optarg;
+        else if (opt == 'g') ctl_gid = atoi(optarg);
         else if (opt == 'v') g_verbose = 1;
-        else { fprintf(stderr, "usage: vsimd [-r rate_hz] [-s scenario] [-v]\n"); return 2; }
+        else { fprintf(stderr, "usage: vsimd [-r rate_hz] [-s scenario] [-g ctl_gid] [-v]\n"); return 2; }
     }
     if (rate < 1 || rate > 1000) { fprintf(stderr, "vsimd: rate must be 1..1000 Hz\n"); return 2; }
     setvbuf(stdout, NULL, _IOLBF, 0);
@@ -316,6 +319,7 @@ int main(int argc, char **argv) {
         n->io.devctl = io_devctl;
         n->io.close_ocb = io_close_ocb;
         iofunc_attr_init(&n->attr, S_IFCHR | (i == N_TEL ? 0644 : 0660), NULL, NULL);
+        if (i == N_CTL && ctl_gid >= 0) n->attr.gid = (gid_t)ctl_gid;   /* uid separation for the world gateway */
         resmgr_attr_t ra;
         memset(&ra, 0, sizeof ra);
         ra.nparts_max = 1;

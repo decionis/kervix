@@ -37,6 +37,9 @@ jobs:
           ctest --test-dir build/asan --output-on-failure
       - name: Telemetry seqlock under ThreadSanitizer
         run: mkdir -p build && make -s tsan
+      - name: Fuzz the gateway's network parser (libFuzzer + ASan/UBSan, 60 s, Linux)
+        if: runner.os == 'Linux'
+        run: make -s fuzz-wire FUZZ_SECONDS=60
       - name: Spike S5 — AAC draft-04 + COSE conformance vs @decionis/verify
         run: npm run -s spike:s5
       - name: Rebuild the replay engine (libkxcore -> WebAssembly) from source (Linux)

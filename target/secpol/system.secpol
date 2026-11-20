@@ -22,7 +22,6 @@ type dumper_t;
 type dumper_t__run;
 type fsevmgr_t;
 type fsevmgr_t__run;
-type io_sock_t;
 type io_sock_t__run;
 type io_usb_t;
 type mqueue_t;
@@ -47,7 +46,6 @@ ability network/rawsocket allow { root };
 ability network/reuseport allow { root };
 ability network/ipsec allow { root };
 ability network/admin allow { root };
-ability network/jailroot allow { root nonroot };
 
 # === Rules for type console_t ============
 allow console_t self:ability {
