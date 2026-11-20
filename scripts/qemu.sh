@@ -6,6 +6,7 @@
 #   localhost:7301..7303 -> target kxgw roles (agent, hmi, observer)
 #
 #   scripts/qemu.sh image     # build/refresh the image (in the qnx-build container)
+#                             # env: KX_MKQNXIMAGE_EXTRA=<opts>, KX_SNIPPETS=<dir of *.custom>
 #   scripts/qemu.sh start     # boot headless; console -> vm/qemu-x86_64/console.log
 #   scripts/qemu.sh wait      # block until ssh answers (prints boot time)
 #   scripts/qemu.sh ssh [cmd] # ssh as root with the project dev key
@@ -32,6 +33,16 @@ running() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
 cmd_image() {
   mkdir -p "$VM" "$REPO/vm/ssh"
   [ -f "$KEY" ] || ssh-keygen -q -t ed25519 -N '' -C kervix-dev -f "$KEY"
+  # KX_SNIPPETS=<dir>: install *.custom mkqnximage snippets (files + boot commands);
+  # without it, reset any previously installed snippets to empty placeholders
+  mkdir -p "$VM/local/snippets"
+  for f in system_files ifs_files data_files ifs_start post_start profile; do
+    if [ -n "${KX_SNIPPETS:-}" ] && [ -f "$KX_SNIPPETS/$f.custom" ]; then
+      cp "$KX_SNIPPETS/$f.custom" "$VM/local/snippets/$f.custom"
+    else
+      echo "# local/snippets/$f.custom (managed by scripts/qemu.sh)" > "$VM/local/snippets/$f.custom"
+    fi
+  done
   "$REPO/docker/qnx-build.sh" bash -c "cd /work/vm/qemu-$ARCH && mkqnximage --noprompt --type=qemu \
     --arch=$ARCH --hostname=kervix-qemu --ip=dhcp --ssh-ident=/work/vm/ssh/kervix_ed25519.pub \
     --data-size=256 --cpu=2 --ram=1G --build ${KX_MKQNXIMAGE_EXTRA:-}"

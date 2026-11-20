@@ -65,6 +65,8 @@ make target-test # cross-build + run the libkxcore tests ON QNX
 make qemu-stop
 ```
 
+To bake files into the image and start services at boot, put mkqnximage snippets (`system_files.custom`, `post_start.custom`, …) in a directory and build with `KX_SNIPPETS=<dir> scripts/qemu.sh image`. See `spikes/s4-boot/snippets/` for an example.
+
 ## Known caveats
 
 - QEMU on Apple Silicon emulates the CPU (no HVF for QNX guests), so **latency numbers from QEMU are not meaningful**. Benchmarks come from the RPi4.
