@@ -1,10 +1,10 @@
 # Kervix top-level shortcuts. Host targets run natively. QNX targets run in
 # the qnx-build container (docker/qnx-build.sh), which works on macOS and Linux.
-.PHONY: help host asan test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 target-escalation tsan clean
+.PHONY: help host asan test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 target-escalation target-ledger tsan clean
 
 ARCHES ?= x86_64 aarch64le
 KX_CORE_TESTS = libkxcore/tests/test_catalog libkxcore/tests/test_policy libkxcore/tests/test_sha256 \
-                libkxcore/tests/test_intent libkxcore/tests/test_grant libkxcore/tests/test_capsule libkxsim/tests/test_sim libkxsim/tests/test_seqlock
+                libkxcore/tests/test_intent libkxcore/tests/test_grant libkxcore/tests/test_capsule libkxcore/tests/test_ledger libkxsim/tests/test_sim libkxsim/tests/test_seqlock
 
 help:
 	@echo "make host            build libkxcore + host tests (native)"
@@ -20,6 +20,7 @@ help:
 	@echo "make target-vsim     vsimd + kxctl acceptance test on QNX"
 	@echo "make target-m1       authority MVP acceptance (propose/grant/redeem/attacks) on QNX"
 	@echo "make target-escalation  driver approval / deny / timeout acceptance on QNX"
+	@echo "make target-ledger   signed ledger + kervix-verify + tamper + crash recovery on QNX"
 	@echo "make qemu-stop       stop the VM"
 
 node_modules: package.json package-lock.json
@@ -94,6 +95,10 @@ target-m1:
 # human oversight (ESCALATE -> driver approve/deny/timeout) acceptance on QNX
 target-escalation:
 	tests/target/escalation.sh
+
+# signed ledger: keys, capsules, export, offline verify, tampering, crash recovery, K3
+target-ledger:
+	tests/target/ledger.sh
 
 clean:
 	rm -rf build

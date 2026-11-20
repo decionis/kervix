@@ -11,5 +11,6 @@ add_library(kxcore STATIC
   src/grant.c
   src/cose.c
   src/capsule.c
+  src/ledger.c
 )
 target_include_directories(kxcore PUBLIC ${PROJECT_SOURCE_DIR}/target/include)

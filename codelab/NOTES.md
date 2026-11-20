@@ -63,3 +63,10 @@ These notes are the gotchas found while building Kervix. Each one becomes a call
 - Shell trap: `cd dir && cmd & p=$!` backgrounds the whole `&&` list, so `$!` is a subshell and `kill $p` misses `cmd`. Write `cd dir; cmd & p=$!`.
 - Non-interactive shells start background jobs with SIGINT ignored. Use SIGTERM to test interruption.
 
+## Signed ledger (kervixd)
+- QNX `struct iovec` uses unions, so build iovecs with `SETIOV(&iov[i], ptr, len)`, not positional initializers.
+- qcrypto key persistence: `qcrypto_privkey_to_mem(..., QCRYPTO_KEY_FMT_DER)` gives 48-byte PKCS#8, and `qcrypto_privkey_from_mem()` reloads it. Write it with `O_EXCL` and mode 0400, then `fsync`.
+- Keep signing off the hot path. A bounded queue plus a low-priority writer thread keeps decisions in microseconds while Ed25519 and `fsync` take milliseconds.
+- "No audit, no action" needs **reservations**, not just a free-space check. Otherwise a flood can starve the record of an action that was already authorized.
+- Recovery must never silently drop bytes: quarantine the torn tail and record how many bytes were moved in the next capsule.
+

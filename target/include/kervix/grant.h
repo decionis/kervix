@@ -79,6 +79,10 @@ uint16_t kx_grant_redeem(kx_grant_table_t *t, const kx_grant_t *presented, const
                          kx_client_t presenter, uint64_t now_ns, const kx_policy_t *pol,
                          const kx_telemetry_t *tel);
 
+/* Read-only lookup of a grant's slot (outstanding or tombstone), or NULL.
+ * Lets the authority record the original intent with effects and expiries. */
+const kx_grant_slot_t *kx_grant_find(const kx_grant_table_t *t, const uint8_t grant_id[16]);
+
 /* Expire outstanding grants past their deadline (each becomes a tombstone) and
  * free tombstones past their grace period. Writes up to `max` expired grant
  * ids to `expired_ids` (for "expired" capsules). Returns how many expired. */
