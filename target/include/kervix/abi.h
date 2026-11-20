@@ -65,8 +65,52 @@ typedef struct {
     uint8_t  mac[32];             /* HMAC-SHA256(per-boot key, all fields above) */
 } kx_grant_t;
 
+/* ---- decision (reply to PROPOSE) --------------------------------------- */
+typedef struct {
+    uint16_t   abi;
+    uint8_t    verdict;            /* kx_verdict_t */
+    uint8_t    gate;               /* kx_gate_t: which constitution gate decided, 0 = rule/default */
+    uint16_t   reason;             /* kx_reason_t */
+    int16_t    rule_index;         /* -1 = default/constitution */
+    char       rule_id[32];        /* stable rule id (NUL-padded), "" if none */
+    uint8_t    intent_hash[32];    /* Agent-Safe Intent v1 hash */
+    uint8_t    policy_hash[32];
+    uint32_t   escalation_id;      /* ESCALATE only */
+    uint32_t   eval_ns;            /* measured PROPOSE handling time inside kervixd */
+    uint64_t   telemetry_seq;      /* telemetry sample the decision was made on */
+    kx_grant_t grant;              /* valid iff verdict == ALLOW */
+} kx_decision_t;
+
+/* ---- actuator <-> authority -------------------------------------------- */
+typedef struct {
+    uint32_t type_id;              /* secpol type id, from the kernel (ctp->info) */
+    int32_t  pid;
+} kx_client_id_t;
+
+typedef struct {                   /* sdv_actuatord -> kervixd: /dev/kervix/redeem */
+    kx_grant_t     grant;
+    kx_intent_t    command;        /* exactly what is about to be actuated */
+    kx_client_id_t presenter;      /* who asked the actuator to execute (kernel-stamped) */
+} kx_redeem_req_t;
+
+typedef struct {                   /* sdv_actuatord -> kervixd: actuation outcome */
+    uint8_t  grant_id[16];
+    uint16_t action;
+    uint8_t  ok;                   /* 1 = actuated, 0 = actuator failed */
+    uint8_t  _pad[5];
+    uint8_t  request_digest[32];   /* digest of the command sent to the bus */
+    uint8_t  response_digest[32];  /* digest of the bus acknowledgement */
+} kx_effect_t;
+
+typedef struct {                   /* client -> sdv_actuatord: /dev/sdv/actuators */
+    kx_grant_t  grant;
+    kx_intent_t command;
+} kx_execute_req_t;
+
 _Static_assert(sizeof(kx_param_t) == 16, "kx_param_t ABI size");
 _Static_assert(sizeof(kx_grant_t) == 152, "kx_grant_t ABI size");
+_Static_assert(sizeof(kx_decision_t) % 8 == 0, "kx_decision_t alignment");
+_Static_assert(sizeof(kx_effect_t) == 88, "kx_effect_t ABI size");
 _Static_assert(sizeof(kx_intent_t) == 2 + 2 + 1 + 1 + 2 + 16 + KX_ACTOR_LEN + 16 * KX_MAX_PARAMS + 32 + 8,
                "kx_intent_t ABI size");
 _Static_assert(sizeof(kx_telemetry_t) % 8 == 0, "kx_telemetry_t alignment");

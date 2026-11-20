@@ -33,8 +33,8 @@ if(KX_QNX)
   add_subdirectory(spikes/s4-boot)
   # On-target components are added as they are implemented (M1+):
   add_subdirectory(target/vsimd)
-  # add_subdirectory(target/kervixd)
-  # add_subdirectory(target/sdv_actuatord)
+  add_subdirectory(target/kervixd)
+  add_subdirectory(target/sdv_actuatord)
   add_subdirectory(target/kxctl)
 endif()
 

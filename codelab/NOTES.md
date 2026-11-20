@@ -47,3 +47,10 @@ These notes are the gotchas found while building Kervix. Each one becomes a call
 - Resource-manager text nodes: `io_write` reads the payload with `resmgr_msgget(ctp, buf, n, sizeof msg->i)`; `io_read` replies with `MsgReply` and returns `_RESMGR_NOREPLY`. A one-line-per-open reply (EOF when `offset > 0`) keeps `cat` and `echo` usable from the shell.
 - gcc 12 `-Werror=maybe-uninitialized` fires on structs filled through a pointer by inline helpers. Zero-initialize them.
 
+## Authority/actuator plumbing (kervixd, sdv_actuatord)
+- A devctl can return a small status without a payload: the server sets `msg->o.ret_val = code`, and the client reads it through `devctl(fd, dcmd, buf, n, &ret)`. Kervix uses this for reason codes on REDEEM and EXECUTE.
+- `__DIOTF(class, cmd, type)` sends **and** receives `sizeof(type)` bytes. Use the larger of request and reply, here a union of intent and decision, so a single buffer serves both directions.
+- Identify callers from `ctp->info.pid` and `ctp->info.type_id`, never from the payload. That is what makes a stolen grant useless to a different process (GRANT_BINDING).
+- A client that keeps a server fd open (actuatord → kervixd) gets `EBADF`/`ESRCH` after the server restarts. Close, reopen once, and otherwise **fail closed**.
+- qcrypto inits lazily: the first DRBG request costs milliseconds. Warm it at start-up if first-request latency matters.
+

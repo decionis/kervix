@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "default_policy.h"
+#include "kervix/policy.h"
 #include "kx_test.h"
 
 #define NOW_NS   1000000000000ull  /* arbitrary monotonic "now" */
@@ -428,8 +428,33 @@ static void test_property_sweep(void) {
     if (bad) fprintf(stderr, "  property sweep: %d invariant violations\n", bad);
 }
 
+static void test_policy_hash(void) {
+    static kx_policy_t a, b;
+    KX_CHECK(kx_policy_build_default(&a) == 0 && kx_policy_build_default(&b) == 0);
+    uint8_t h[32];
+    kx_policy_hash(&a, h);
+    KX_CHECK(memcmp(h, a.hash, 32) == 0);                 /* build_default stores it */
+    KX_CHECK(memcmp(a.hash, b.hash, 32) == 0);            /* deterministic */
+    uint8_t zero[32] = { 0 };
+    KX_CHECK(memcmp(a.hash, zero, 32) != 0);
+    b.preds[0].k += 1;                                    /* any predicate constant */
+    kx_policy_hash(&b, h);
+    KX_CHECK(memcmp(h, a.hash, 32) != 0);
+    b = a;
+    b.rules[3].grant_ttl_ms += 1;                         /* any rule attribute */
+    kx_policy_hash(&b, h);
+    KX_CHECK(memcmp(h, a.hash, 32) != 0);
+    b = a;
+    b.rules[0].id[0] ^= 1;                                /* rule ids are bound too */
+    kx_policy_hash(&b, h);
+    KX_CHECK(memcmp(h, a.hash, 32) != 0);
+    char hx[65];
+    for (int i = 0; i < 32; i++) snprintf(hx + 2 * i, 3, "%02x", a.hash[i]);
+    printf("default policy hash: %s\n", hx);
+}
+
 int main(void) {
-    KX_CHECK(kx_test_build_default_policy(&POL) == 0);
+    KX_CHECK(kx_policy_build_default(&POL) == 0);
     KX_CHECK(POL.finalized && POL.n_rules == 22);
     test_comfort();
     test_door();
@@ -439,5 +464,6 @@ int main(void) {
     test_validation();
     test_policy_construction();
     test_property_sweep();
+    test_policy_hash();
     KX_TEST_DONE();
 }

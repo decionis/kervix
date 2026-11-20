@@ -1,13 +1,17 @@
-/* The demo vehicle's default policy built in C. Mirrors policies/default.yaml
- * rule-for-rule until host/kxpolicy compiles the YAML (then a test asserts
- * both are identical). */
+/* The demo vehicle's built-in default policy. Mirrors policies/default.yaml
+ * rule-for-rule until host/kxpolicy compiles signed .kxp bundles (M2); then a
+ * test asserts both produce the same kx_policy_hash(). */
 #include <string.h>
 
-#include "default_policy.h"
+#include "kervix/policy.h"
 
 #define P  KX_VERDICT_ALLOW
 #define E  KX_VERDICT_ESCALATE
 #define B  KX_VERDICT_BLOCK
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers" /* positional rule table */
+#endif
 
 static kx_pred_t tel(kx_tfield_t f, kx_op_t op, int64_t k) {
     kx_pred_t p;
@@ -44,8 +48,7 @@ typedef struct {
     uint32_t grant_ttl_ms, esc_timeout_ms;
 } rule_src_t;
 
-int kx_test_add_rule(kx_policy_t *pol, const rule_src_t *s);
-int kx_test_add_rule(kx_policy_t *pol, const rule_src_t *s) {
+static int add_rule(kx_policy_t *pol, const rule_src_t *s) {
     kx_rule_t r;
     memset(&r, 0, sizeof r);
     strncpy(r.id, s->id, KX_RULE_ID_LEN - 1);
@@ -59,9 +62,9 @@ int kx_test_add_rule(kx_policy_t *pol, const rule_src_t *s) {
 }
 
 #define N(arr) (uint8_t)(sizeof(arr) / sizeof((arr)[0]))
-#define RULE(...) do { rule_src_t _s = { __VA_ARGS__ }; if (kx_test_add_rule(pol, &_s) != 0) return -1; } while (0)
+#define RULE(...) do { rule_src_t _s = { __VA_ARGS__ }; if (add_rule(pol, &_s) != 0) return -1; } while (0)
 
-int kx_test_build_default_policy(kx_policy_t *pol) {
+int kx_policy_build_default(kx_policy_t *pol) {
     kx_policy_init(pol, "kervix-default", (1u << 16));
 
     const kx_pred_t driver[] = { tel(KX_TF_DRIVER_PRESENT, KX_OP_EQ, 1) };
@@ -118,5 +121,7 @@ int kx_test_build_default_policy(kx_policy_t *pol) {
          N(ota_ilock), driver, N(driver), KX_R_DRIVER_ABSENT, 500, 30000);
     RULE("ota-low-power", KX_ACT_OTA_ECU_FLASH, B, KX_R_R156_INSUFFICIENT_POWER);
 
-    return kx_policy_finalize(pol);
+    if (kx_policy_finalize(pol) != 0) return -1;
+    kx_policy_hash(pol, pol->hash);
+    return 0;
 }

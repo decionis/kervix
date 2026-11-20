@@ -8,6 +8,7 @@
 
 #include "kervix/jcs.h"
 #include "kervix/policy.h"
+#include "kervix/sha256.h"
 
 #define KX_DEFAULT_GRANT_TTL_MS  250u
 #define KX_DEFAULT_ESC_TIMEOUT_MS 30000u
@@ -322,4 +323,37 @@ int kx_policy_finalize(kx_policy_t *pol) {
     }
     pol->finalized = 1;
     return 0;
+}
+
+/* ------------------------------------------------------------- hashing */
+
+static void h8(kx_sha256_t *h, uint8_t v) { kx_sha256_update(h, &v, 1); }
+static void h16(kx_sha256_t *h, uint16_t v) { uint8_t b[2] = { (uint8_t)v, (uint8_t)(v >> 8) }; kx_sha256_update(h, b, 2); }
+static void h32(kx_sha256_t *h, uint32_t v) { uint8_t b[4]; for (int i = 0; i < 4; i++) b[i] = (uint8_t)(v >> (8 * i)); kx_sha256_update(h, b, 4); }
+static void h64(kx_sha256_t *h, uint64_t v) { uint8_t b[8]; for (int i = 0; i < 8; i++) b[i] = (uint8_t)(v >> (8 * i)); kx_sha256_update(h, b, 8); }
+static void hspan(kx_sha256_t *h, kx_pred_span_t s) { h16(h, s.off); h8(h, s.n); }
+
+void kx_policy_hash(const kx_policy_t *pol, uint8_t out[32]) {
+    kx_sha256_t h;
+    kx_sha256_init(&h);
+    kx_sha256_update(&h, "kervix.policy/1", 15);
+    kx_sha256_update(&h, pol->policy_id, KX_POLICY_ID_LEN);
+    h32(&h, pol->version);
+    h8(&h, pol->default_verdict);
+    h16(&h, pol->default_reason);
+    h16(&h, pol->n_rules);
+    for (uint16_t i = 0; i < pol->n_rules && i < KX_MAX_RULES; i++) {
+        const kx_rule_t *r = &pol->rules[i];
+        kx_sha256_update(&h, r->id, KX_RULE_ID_LEN);
+        h16(&h, r->action); h8(&h, r->verdict); h16(&h, r->reason); h16(&h, r->require_reason);
+        hspan(&h, r->when); hspan(&h, r->interlock); hspan(&h, r->require);
+        h32(&h, r->grant_ttl_ms); h32(&h, r->esc_timeout_ms);
+    }
+    h16(&h, pol->n_preds);
+    for (uint16_t i = 0; i < pol->n_preds && i < KX_MAX_PREDS; i++) {
+        const kx_pred_t *p = &pol->preds[i];
+        h8(&h, p->a.src); h16(&h, p->a.id); h8(&h, p->b.src); h16(&h, p->b.id);
+        h8(&h, p->fn); h8(&h, p->op); h8(&h, p->group); h64(&h, (uint64_t)p->k);
+    }
+    kx_sha256_final(&h, out);
 }
