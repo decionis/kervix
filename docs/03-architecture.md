@@ -331,13 +331,17 @@ A COSE_Sign1 (CBOR tag 18) per capsule:
 
 The CBOR is a fixed shape and is emitted from a byte template, so no general CBOR library is needed on target. The vehicle key is generated on first boot into `/etc/kervix/keys/` (mode 0400, owner kervixd uid) and exported as a JWK.
 
-### 8.4 Crypto backend
+### 8.4 Crypto backend — settled by S3 and decision C1
 
-`kx_crypto.h` abstracts SHA-256, HMAC-SHA256, Ed25519 sign and CSPRNG:
-- **Target:** QNX **qcrypto** (`openssl-3` provider) **[SPIKE-3]**. Fallback: vendored **Monocypher** (CC0/BSD-2, allocation-free).
-- **Host tests:** OpenSSL or Monocypher.
+| Primitive | Implementation | Why |
+|---|---|---|
+| SHA-256, HMAC-SHA256 (intent hash, capsule id, grant MAC) | **`libkxcore`** (portable C) | Replay must reproduce bit-for-bit on any host (C1) |
+| Ed25519 sign/verify (producer envelopes, manifest) | **QNX qcrypto, `openssl-3` plugin**: key type `ed25519`, algorithm `eddsa-pure` | Verified byte-exact against the pinned draft-04 vector on QNX 8.0 (S3) |
+| CSPRNG (grant ids, per-boot `k_grant`) | **qcrypto `drbg-ctr-256`** with personalization string | Verified in S3 |
 
-The grant key `k_grant` comes from 32 bytes of CSPRNG output at each start, which invalidates every outstanding grant on restart (fail-closed).
+- Gotchas: a qcrypto context is single-use after a one-shot operation, so the writer thread requests a fresh signature context per envelope. `qcrypto_keypair_init()` must be called before `keypair_generate()`.
+- The vehicle key is generated on first boot. The public key is exported as SPKI DER, and its last 32 bytes become the raw key for the COSE `kid` header and the JWK `x`.
+- Host tests and the replay verifier use Node's crypto for Ed25519. No Monocypher dependency is needed.
 
 ### 8.5 Ledger
 
