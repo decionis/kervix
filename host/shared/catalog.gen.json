@@ -1,0 +1,665 @@
+{
+  "version": 1,
+  "sha256": "d0db1757c6ede040080a6472049d7bb93b7df31f9cfd2145a4632b025d4545d0",
+  "enums": {
+    "gear": [
+      "P",
+      "R",
+      "N",
+      "D"
+    ],
+    "ecu": [
+      "brake",
+      "powertrain",
+      "adas",
+      "bms",
+      "infotainment"
+    ],
+    "window": [
+      "front_left",
+      "front_right",
+      "rear_left",
+      "rear_right"
+    ],
+    "door": [
+      "front_left",
+      "front_right",
+      "rear_left",
+      "rear_right"
+    ],
+    "recipient": [
+      "emergency_contact",
+      "fleet_operator",
+      "roadside_assist"
+    ],
+    "ota_state": [
+      "idle",
+      "flashing",
+      "failed"
+    ]
+  },
+  "telemetry": [
+    {
+      "name": "speed_dkph",
+      "ctype": "int32",
+      "vss": "Vehicle.Speed",
+      "min": 0,
+      "max": 3000,
+      "enum": null,
+      "note": ""
+    },
+    {
+      "name": "gear",
+      "ctype": "uint8",
+      "vss": "Vehicle.Powertrain.Transmission.SelectedGear",
+      "min": 0,
+      "max": 3,
+      "enum": "gear",
+      "note": ""
+    },
+    {
+      "name": "park_brake",
+      "ctype": "uint8",
+      "vss": "Vehicle.Chassis.ParkingBrake.IsEngaged",
+      "min": 0,
+      "max": 1,
+      "enum": null,
+      "note": ""
+    },
+    {
+      "name": "soc_dpct",
+      "ctype": "int16",
+      "vss": "Vehicle.Powertrain.TractionBattery.StateOfCharge.Current",
+      "min": 0,
+      "max": 1000,
+      "enum": null,
+      "note": ""
+    },
+    {
+      "name": "charging",
+      "ctype": "uint8",
+      "vss": "Vehicle.Powertrain.TractionBattery.Charging.IsCharging",
+      "min": 0,
+      "max": 1,
+      "enum": null,
+      "note": ""
+    },
+    {
+      "name": "driver_present",
+      "ctype": "uint8",
+      "vss": "Vehicle.Cabin.Seat.Row1.DriverSide.IsOccupied",
+      "min": 0,
+      "max": 1,
+      "enum": null,
+      "note": ""
+    },
+    {
+      "name": "service_mode",
+      "ctype": "uint8",
+      "vss": null,
+      "min": 0,
+      "max": 1,
+      "enum": null,
+      "note": "Kervix.Service.IsActive — workshop session authenticated"
+    },
+    {
+      "name": "doors_locked_mask",
+      "ctype": "uint8",
+      "vss": null,
+      "min": 0,
+      "max": 15,
+      "enum": null,
+      "note": "bit i = Vehicle.Cabin.Door.<i>.IsLocked"
+    },
+    {
+      "name": "hvac_setpoint_dc",
+      "ctype": "int16",
+      "vss": "Vehicle.Cabin.HVAC.Station.Row1.Driver.Temperature",
+      "min": 160,
+      "max": 280,
+      "enum": null,
+      "note": ""
+    },
+    {
+      "name": "window_fl_pct",
+      "ctype": "uint8",
+      "vss": "Vehicle.Cabin.Door.Row1.DriverSide.Window.Position",
+      "min": 0,
+      "max": 100,
+      "enum": null,
+      "note": ""
+    },
+    {
+      "name": "window_fr_pct",
+      "ctype": "uint8",
+      "vss": "Vehicle.Cabin.Door.Row1.PassengerSide.Window.Position",
+      "min": 0,
+      "max": 100,
+      "enum": null,
+      "note": ""
+    },
+    {
+      "name": "window_rl_pct",
+      "ctype": "uint8",
+      "vss": "Vehicle.Cabin.Door.Row2.DriverSide.Window.Position",
+      "min": 0,
+      "max": 100,
+      "enum": null,
+      "note": ""
+    },
+    {
+      "name": "window_rr_pct",
+      "ctype": "uint8",
+      "vss": "Vehicle.Cabin.Door.Row2.PassengerSide.Window.Position",
+      "min": 0,
+      "max": 100,
+      "enum": null,
+      "note": ""
+    },
+    {
+      "name": "hazard_on",
+      "ctype": "uint8",
+      "vss": "Vehicle.Body.Lights.Hazard.IsSignaling",
+      "min": 0,
+      "max": 1,
+      "enum": null,
+      "note": ""
+    },
+    {
+      "name": "acc_target_kph",
+      "ctype": "int16",
+      "vss": "Vehicle.ADAS.CruiseControl.SpeedSet",
+      "min": 0,
+      "max": 200,
+      "enum": null,
+      "note": ""
+    },
+    {
+      "name": "charge_limit_pct",
+      "ctype": "uint8",
+      "vss": "Vehicle.Powertrain.TractionBattery.Charging.ChargeLimit",
+      "min": 50,
+      "max": 100,
+      "enum": null,
+      "note": ""
+    },
+    {
+      "name": "immobilizer_on",
+      "ctype": "uint8",
+      "vss": null,
+      "min": 0,
+      "max": 1,
+      "enum": null,
+      "note": "Kervix.Security.Immobilizer.IsEngaged"
+    },
+    {
+      "name": "location_shared",
+      "ctype": "uint8",
+      "vss": null,
+      "min": 0,
+      "max": 1,
+      "enum": null,
+      "note": "Kervix.Privacy.LocationSharing.IsActive"
+    },
+    {
+      "name": "ota_state",
+      "ctype": "uint8",
+      "vss": null,
+      "min": 0,
+      "max": 2,
+      "enum": "ota_state",
+      "note": "Kervix.OTA.State"
+    }
+  ],
+  "actions": [
+    {
+      "id": 1,
+      "name": "cabin.climate.set",
+      "summary": "Set the driver-zone cabin temperature.",
+      "irreversibility": "two_way",
+      "safety": "qm",
+      "privacy": false,
+      "params": [
+        {
+          "name": "temp_dc",
+          "type": "int",
+          "min": 160,
+          "max": 280,
+          "enumName": null,
+          "doc": "Target temperature in 0.1 °C (160 = 16.0 °C)",
+          "key": 1
+        }
+      ],
+      "tool": "cabin_climate_set",
+      "effectType": "vehicle.cabin.climate.set"
+    },
+    {
+      "id": 2,
+      "name": "cabin.window.set",
+      "summary": "Move one window to a position.",
+      "irreversibility": "two_way",
+      "safety": "qm",
+      "privacy": false,
+      "params": [
+        {
+          "name": "window",
+          "type": "enum",
+          "min": 0,
+          "max": 3,
+          "enumName": "window",
+          "doc": "",
+          "key": 2
+        },
+        {
+          "name": "pos_pct",
+          "type": "int",
+          "min": 0,
+          "max": 100,
+          "enumName": null,
+          "doc": "0 = closed, 100 = fully open",
+          "key": 3
+        }
+      ],
+      "tool": "cabin_window_set",
+      "effectType": "vehicle.cabin.window.set"
+    },
+    {
+      "id": 3,
+      "name": "body.door.unlock",
+      "summary": "Unlock one door.",
+      "irreversibility": "two_way",
+      "safety": "safety",
+      "privacy": false,
+      "params": [
+        {
+          "name": "door",
+          "type": "enum",
+          "min": 0,
+          "max": 3,
+          "enumName": "door",
+          "doc": "",
+          "key": 4
+        }
+      ],
+      "tool": "body_door_unlock",
+      "effectType": "vehicle.body.door.unlock"
+    },
+    {
+      "id": 4,
+      "name": "light.hazard.set",
+      "summary": "Turn the hazard lights on or off.",
+      "irreversibility": "two_way",
+      "safety": "qm",
+      "privacy": false,
+      "params": [
+        {
+          "name": "on",
+          "type": "bool",
+          "min": 0,
+          "max": 1,
+          "enumName": null,
+          "doc": "",
+          "key": 5
+        }
+      ],
+      "tool": "light_hazard_set",
+      "effectType": "vehicle.light.hazard.set"
+    },
+    {
+      "id": 5,
+      "name": "adas.acc.set_speed",
+      "summary": "Change the adaptive-cruise-control set speed.",
+      "irreversibility": "two_way",
+      "safety": "safety",
+      "privacy": false,
+      "params": [
+        {
+          "name": "target_kph",
+          "type": "int",
+          "min": 30,
+          "max": 200,
+          "enumName": null,
+          "doc": "",
+          "key": 6
+        }
+      ],
+      "tool": "adas_acc_set_speed",
+      "effectType": "vehicle.adas.acc.set_speed"
+    },
+    {
+      "id": 6,
+      "name": "battery.charge_limit.set",
+      "summary": "Set the maximum state-of-charge for charging.",
+      "irreversibility": "two_way",
+      "safety": "qm",
+      "privacy": false,
+      "params": [
+        {
+          "name": "pct",
+          "type": "int",
+          "min": 50,
+          "max": 100,
+          "enumName": null,
+          "doc": "",
+          "key": 7
+        }
+      ],
+      "tool": "battery_charge_limit_set",
+      "effectType": "vehicle.battery.charge_limit.set"
+    },
+    {
+      "id": 7,
+      "name": "telematics.location.share",
+      "summary": "Share live vehicle location with a recipient for a duration.",
+      "irreversibility": "one_way_recoverable",
+      "safety": "qm",
+      "privacy": true,
+      "params": [
+        {
+          "name": "recipient",
+          "type": "enum",
+          "min": 0,
+          "max": 2,
+          "enumName": "recipient",
+          "doc": "",
+          "key": 8
+        },
+        {
+          "name": "duration_s",
+          "type": "int",
+          "min": 60,
+          "max": 86400,
+          "enumName": null,
+          "doc": "",
+          "key": 9
+        }
+      ],
+      "tool": "telematics_location_share",
+      "effectType": "vehicle.telematics.location.share"
+    },
+    {
+      "id": 8,
+      "name": "diag.dtc.clear",
+      "summary": "Clear stored diagnostic trouble codes on an ECU.",
+      "irreversibility": "one_way_recoverable",
+      "safety": "safety",
+      "privacy": false,
+      "params": [
+        {
+          "name": "ecu",
+          "type": "enum",
+          "min": 0,
+          "max": 4,
+          "enumName": "ecu",
+          "doc": "",
+          "key": 10
+        }
+      ],
+      "tool": "diag_dtc_clear",
+      "effectType": "vehicle.diag.dtc.clear"
+    },
+    {
+      "id": 9,
+      "name": "vehicle.immobilizer.engage",
+      "summary": "Engage the immobilizer (vehicle cannot be driven).",
+      "irreversibility": "one_way_recoverable",
+      "safety": "safety",
+      "privacy": false,
+      "params": [],
+      "tool": "vehicle_immobilizer_engage",
+      "effectType": "vehicle.vehicle.immobilizer.engage"
+    },
+    {
+      "id": 10,
+      "name": "chassis.brake.calibration.write",
+      "summary": "Write a brake-system calibration blob.",
+      "irreversibility": "one_way_consequential",
+      "safety": "safety",
+      "privacy": false,
+      "params": [
+        {
+          "name": "ecu",
+          "type": "enum",
+          "min": 0,
+          "max": 4,
+          "enumName": "ecu",
+          "doc": "",
+          "key": 10
+        },
+        {
+          "name": "blob_digest",
+          "type": "digest",
+          "min": 0,
+          "max": 0,
+          "enumName": null,
+          "doc": "sha256 of the calibration blob",
+          "key": 11
+        }
+      ],
+      "tool": "chassis_brake_calibration_write",
+      "effectType": "vehicle.chassis.brake.calibration.write"
+    },
+    {
+      "id": 11,
+      "name": "ota.ecu.flash",
+      "summary": "Flash a firmware image to an ECU (vehicle unusable during flash).",
+      "irreversibility": "one_way_consequential",
+      "safety": "safety",
+      "privacy": false,
+      "params": [
+        {
+          "name": "ecu",
+          "type": "enum",
+          "min": 0,
+          "max": 4,
+          "enumName": "ecu",
+          "doc": "",
+          "key": 10
+        },
+        {
+          "name": "image_digest",
+          "type": "digest",
+          "min": 0,
+          "max": 0,
+          "enumName": null,
+          "doc": "sha256 of the firmware image",
+          "key": 12
+        }
+      ],
+      "tool": "ota_ecu_flash",
+      "effectType": "vehicle.ota.ecu.flash"
+    }
+  ],
+  "paramKeys": [
+    "",
+    "temp_dc",
+    "window",
+    "pos_pct",
+    "door",
+    "on",
+    "target_kph",
+    "pct",
+    "recipient",
+    "duration_s",
+    "ecu",
+    "blob_digest",
+    "image_digest"
+  ],
+  "reasons": [
+    {
+      "id": 0,
+      "name": "OK",
+      "text": "Allowed by policy."
+    },
+    {
+      "id": 1,
+      "name": "DEFAULT_DENY",
+      "text": "No policy rule permits this action."
+    },
+    {
+      "id": 2,
+      "name": "UNKNOWN_ACTION",
+      "text": "Action is not in the catalog."
+    },
+    {
+      "id": 3,
+      "name": "PARAM_INVALID",
+      "text": "A parameter is missing or out of range."
+    },
+    {
+      "id": 4,
+      "name": "TELEMETRY_STALE",
+      "text": "Vehicle telemetry is stale; failing closed."
+    },
+    {
+      "id": 5,
+      "name": "TELEMETRY_IMPLAUSIBLE",
+      "text": "Vehicle telemetry is inconsistent; failing closed."
+    },
+    {
+      "id": 6,
+      "name": "LEDGER_PRESSURE",
+      "text": "Audit ledger unavailable; no audit, no action."
+    },
+    {
+      "id": 7,
+      "name": "RATE_LIMITED",
+      "text": "Too many requests for this action."
+    },
+    {
+      "id": 8,
+      "name": "INTENT_EXPIRED",
+      "text": "The intent expired before evaluation."
+    },
+    {
+      "id": 20,
+      "name": "VEHICLE_MOVING",
+      "text": "Not permitted while the vehicle is moving."
+    },
+    {
+      "id": 21,
+      "name": "NOT_PARKED",
+      "text": "Requires gear P with the parking brake engaged."
+    },
+    {
+      "id": 22,
+      "name": "R156_NOT_SAFE_STATE",
+      "text": "Software update requires a safe state (UN R156): parked, brake engaged."
+    },
+    {
+      "id": 23,
+      "name": "R156_INSUFFICIENT_POWER",
+      "text": "Software update requires sufficient energy (UN R156): SoC ≥ 40% or charging."
+    },
+    {
+      "id": 24,
+      "name": "SERVICE_MODE_REQUIRED",
+      "text": "Requires an authenticated workshop service session."
+    },
+    {
+      "id": 25,
+      "name": "SPEED_DELTA_LARGE",
+      "text": "Speed change exceeds the automatic limit; driver confirmation needed."
+    },
+    {
+      "id": 26,
+      "name": "SPEED_ABOVE_LIMIT",
+      "text": "Requested speed exceeds the permitted maximum."
+    },
+    {
+      "id": 27,
+      "name": "WINDOW_HIGH_SPEED",
+      "text": "Opening a window wide at high speed needs driver confirmation."
+    },
+    {
+      "id": 28,
+      "name": "DRIVER_CONSENT",
+      "text": "Requires the driver's explicit consent."
+    },
+    {
+      "id": 29,
+      "name": "DRIVER_ABSENT",
+      "text": "Requires the driver to be present."
+    },
+    {
+      "id": 40,
+      "name": "HUMAN_APPROVED",
+      "text": "Approved by the driver."
+    },
+    {
+      "id": 41,
+      "name": "HUMAN_DENIED",
+      "text": "Denied by the driver."
+    },
+    {
+      "id": 42,
+      "name": "ESCALATION_TIMEOUT",
+      "text": "No driver response in time; failing closed."
+    },
+    {
+      "id": 60,
+      "name": "GRANT_MAC",
+      "text": "Grant failed authentication (forged or tampered)."
+    },
+    {
+      "id": 61,
+      "name": "GRANT_UNKNOWN",
+      "text": "Grant was never issued or is no longer known."
+    },
+    {
+      "id": 62,
+      "name": "GRANT_SPENT",
+      "text": "Grant was already used (replay)."
+    },
+    {
+      "id": 63,
+      "name": "GRANT_EXPIRED",
+      "text": "Grant expired before execution."
+    },
+    {
+      "id": 64,
+      "name": "GRANT_PARAMS",
+      "text": "Command does not match the authorized parameters."
+    },
+    {
+      "id": 65,
+      "name": "GRANT_BINDING",
+      "text": "Grant presented by a different client than it was issued to."
+    },
+    {
+      "id": 66,
+      "name": "GRANT_INTERLOCK",
+      "text": "Vehicle state changed since authorization; interlock failed."
+    },
+    {
+      "id": 67,
+      "name": "GRANT_TABLE_FULL",
+      "text": "Too many outstanding grants; failing closed."
+    },
+    {
+      "id": 80,
+      "name": "AUTHORITY_EPOCH",
+      "text": "Execution authority (re)started; new epoch."
+    },
+    {
+      "id": 81,
+      "name": "POLICY_ACTIVATED",
+      "text": "A new signed policy was activated."
+    },
+    {
+      "id": 82,
+      "name": "AUTHORITY_UNAVAILABLE",
+      "text": "Execution authority unreachable; actuation locked (fail closed)."
+    },
+    {
+      "id": 83,
+      "name": "ACTUATOR_FAILED",
+      "text": "The actuator bus did not acknowledge the command."
+    },
+    {
+      "id": 84,
+      "name": "ESCALATION_QUEUE_FULL",
+      "text": "Too many requests are already waiting for the driver; failing closed."
+    }
+  ]
+}

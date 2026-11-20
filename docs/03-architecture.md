@@ -387,7 +387,7 @@ The CBOR is a fixed shape and is emitted from a byte template, so no general CBO
 - **Recovery:** the valid prefix is found with `kx_ledger_scan` (magic, bounds, CRC, contiguous sequence). A torn or corrupt tail is moved to `quarantine-<epoch>.bin` and truncated, never silently dropped. A new **epoch capsule** (random epoch id) records `quarantined_bytes` and chains to the last valid capsule with `epoch_opens`.
 - **Export:** `kxctl dossier export <dir>` writes `capsules.jsonl`, `envelopes.txt` (base64url), `vehicle.jwk.json` and `manifest.json` (file sha256s, record count, sequence range, head). `kxctl dossier tail [N]` gives a quick on-target view.
 
-## 9. Verification and deterministic replay (host) — `host/verify/kervix-verify.mjs` implemented
+## 9. Verification and deterministic replay (host) — `host/verify/kervix-verify.mjs` implemented, replay included
 
 `kervix-verify <dossier> [--json]` runs offline on Node ≥ 20, built on `@decionis/verify`. Exit 0/1/2. Checks:
 
@@ -403,7 +403,12 @@ The CBOR is a fixed shape and is emitted from a byte template, so no general CBO
 
 Tampering detected by `tests/target/ledger.sh`: edited evidence (with and without a forged manifest), a deleted record, swapped signatures, a substituted public key. A **real QNX-signed dossier** is committed as `tests/fixtures/dossier-qnx-qemu-2026-11-20/`; CI verifies it and rejects a one-byte-tampered copy on every push.
 
-**Replay** (next): the verifier will re-run the C policy core on each decision's recorded `intent`, `telemetry` and `env`. `kx_capsule_replay()` already reproduces every verdict in the C tests. It will run as a native host helper first; WASM for in-browser verification is the stretch goal.
+7. **replay** (implemented): `libkxcore` is compiled to **WebAssembly** (`wasm/`, 26.7 KB `host/verify/kxcore.wasm`). It is built from the *unmodified* C sources that run in `kervixd`, plus a freestanding libc shim, and rebuilt from source in CI.
+   - For every decision, the verifier feeds the recorded `intent`, `telemetry` and `env` through setter exports (no struct-layout coupling) and re-runs `kx_eval`.
+   - Verdict, gate, reason and rule must match the recording, and the **intent hash the grant was bound to must recompute** (the evidence carries `tenant_id`).
+   - K3 back-pressure BLOCKs (`LEDGER_PRESSURE` when the queue lacked room) are reported as attested overrides.
+   - **Why it matters:** a signature proves *who* recorded a decision, and replay proves the decision *follows from the policy*. `tests/conformance/liar-dossier.mjs` builds a fully valid, **signed** dossier in which one decision contradicts the policy (an OTA flash at 110 km/h recorded as ALLOW). Checks 1–6 pass, and only replay rejects it. A second case does the same for a grant bound to the wrong intent hash.
+   - The same module can run in the browser for in-dashboard verification (M3).
 
 ## 10. Real-time design and timing budget
 
