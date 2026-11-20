@@ -1,6 +1,6 @@
 # Kervix top-level shortcuts. Host targets run natively. QNX targets run in
 # the qnx-build container (docker/qnx-build.sh), which works on macOS and Linux.
-.PHONY: help host asan test codegen codegen-check spikes target target-x86_64 target-aarch64le qnx-shell clean
+.PHONY: help host asan test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test clean
 
 ARCHES ?= x86_64 aarch64le
 
@@ -11,6 +11,10 @@ help:
 	@echo "make codegen         regenerate C/TS/tool schemas from catalog/catalog.yaml"
 	@echo "make target          build QNX 8.0 binaries for: $(ARCHES) (needs SDP, see docs/setup-macos.md)"
 	@echo "make qnx-shell       interactive shell with the QNX SDP environment"
+	@echo "make qemu-image      build the QNX 8.0 x86_64 QEMU image (mkqnximage, in the container)"
+	@echo "make qemu-start      boot it headless on this machine (ssh on localhost:2222)"
+	@echo "make target-test     cross-build, copy and run libkxcore tests ON QNX (QEMU)"
+	@echo "make qemu-stop       stop the VM"
 
 node_modules: package.json package-lock.json
 	npm ci --no-audit --no-fund
@@ -45,6 +49,26 @@ target-%:
 
 qnx-shell:
 	docker/qnx-build.sh
+
+qemu-image:
+	scripts/qemu.sh image
+
+qemu-start:
+	scripts/qemu.sh start
+	scripts/qemu.sh wait
+
+qemu-stop:
+	scripts/qemu.sh stop
+
+qemu-ssh:
+	scripts/qemu.sh ssh
+
+# Run the portable-core unit tests on QNX itself (same binaries as the target build).
+target-test: target-x86_64
+	scripts/qemu.sh status | grep -q running || $(MAKE) qemu-start
+	scripts/qemu.sh ssh 'mkdir -p /data/kervix/tests'
+	scripts/qemu.sh scp build/qnx-x86_64/target/libkxcore/tests/test_catalog build/qnx-x86_64/target/libkxcore/tests/test_policy /data/kervix/tests/
+	scripts/qemu.sh ssh 'cd /data/kervix/tests && uname -a && ./test_catalog && ./test_policy'
 
 clean:
 	rm -rf build

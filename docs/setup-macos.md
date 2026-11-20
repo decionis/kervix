@@ -49,7 +49,7 @@ Why a Docker volume instead of `~/qnx800` on the Mac:
 
 On **native x86_64 Linux** you can instead install the SDP normally and run `QNX_SDP_DIR=~/qnx800 docker/qnx-build.sh …`, or skip Docker entirely.
 
-Additional packages (QEMU image support, qcrypto, secpol tools, tracelogger, RPi4 target image) are added by spikes S0–S4 with the same command-line tool. The exact package ids are recorded here as they are confirmed.
+The baseline already includes everything needed so far: qcc 12.2 for x86_64 and aarch64le, `mkqnximage`, `secpolcompile`, `traceprinter`, and the qcrypto and secpol headers and libs. The RPi4 target image is added when the hardware arrives.
 
 ## 3. Everyday
 
@@ -57,6 +57,12 @@ Additional packages (QEMU image support, qcrypto, secpol tools, tracelogger, RPi
 make test        # host: libkxcore unit tests + codegen check + AAC conformance (no SDP needed)
 make target      # QNX 8.0 binaries for x86_64 + aarch64le (in the container)
 make qnx-shell   # interactive shell with qcc/mkqnximage on PATH
+
+make qemu-image  # build the QNX 8.0 x86_64 QEMU image (vm/qemu-x86_64, git-ignored)
+make qemu-start  # boot headless (~15 s on an M1); console in vm/qemu-x86_64/console.log
+make qemu-ssh    # root shell on the target (project-local key in vm/ssh/)
+make target-test # cross-build + run the libkxcore tests ON QNX
+make qemu-stop
 ```
 
 ## Known caveats

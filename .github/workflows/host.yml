@@ -6,6 +6,7 @@ name: host
 # consistency, and AAC/COSE conformance against the published verifier.
 on:
   push:
+    branches: [master]
   pull_request:
 
 jobs:
