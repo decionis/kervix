@@ -1,0 +1,12 @@
+{
+  "name": "@kervix/kxpolicy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Kervix policy compiler, signer (author != approver) and test runner on the vehicle's own C core (WASM)",
+  "bin": { "kxpolicy": "./src/main.ts" },
+  "engines": { "node": ">=22.18" },
+  "scripts": { "test": "node --test test/*.test.ts" },
+  "dependencies": { "yaml": "^2.6.0" }
+}

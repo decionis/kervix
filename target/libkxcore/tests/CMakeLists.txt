@@ -28,3 +28,8 @@ add_test(NAME capsule COMMAND test_capsule)
 add_executable(test_ledger test_ledger.c)
 target_link_libraries(test_ledger PRIVATE kxcore)
 add_test(NAME ledger COMMAND test_ledger)
+
+add_executable(test_policy_load test_policy_load.c)
+target_link_libraries(test_policy_load PRIVATE kxcore)
+target_compile_definitions(test_policy_load PRIVATE KX_FIXTURE_DIR="${PROJECT_SOURCE_DIR}/tests/fixtures")
+add_test(NAME policy_load COMMAND test_policy_load)

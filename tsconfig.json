@@ -12,5 +12,5 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["host/bridge/src", "host/bridge/test", "host/agent/src", "host/agent/test", "host/shared/src", "tests/target/bridge-e2e.ts"]
+  "include": ["host/bridge/src", "host/bridge/test", "host/agent/src", "host/agent/test", "host/kxpolicy/src", "host/kxpolicy/test", "host/shared/src", "tests/target/bridge-e2e.ts"]
 }

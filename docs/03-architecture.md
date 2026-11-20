@@ -324,6 +324,19 @@ The **`kxpolicy` compiler** (host, TypeScript):
 
 ---
 
+**Implemented (M3, host half): `host/kxpolicy`** (`npm run kxpolicy -- …`). The on-vehicle activation follows in the next PR.
+- **`compile`:**
+  - Checks the YAML against the catalog: unknown fields, parameters, enum values, actions, reasons and keys, digest comparisons, interlock on BLOCK, and bounds.
+  - Emits a **canonical policy body**: rules in source order, not finalized; the format is in `kervix/policy.h`.
+  - The vehicle's own loader **`kx_policy_load`** (libkxcore, bounded, no allocation) parses it, validates it, finalizes it and hashes it. Finalize semantics (defaults, ordering) therefore live in one place, in C, on the vehicle, in host tests and in the WASM replay engine.
+- **Equivalence, proved:** `policies/default.yaml` compiled and loaded **has exactly the hash of the built-in C policy** (`sha256:8539d711…`, the hash recorded in every capsule so far). A host test and a C test (`test_policy_load`, ASan in CI) assert it.
+  - The C test also requires every truncation, trailing byte and single-byte corruption of the body to be rejected or to yield a *different* policy.
+  - That requirement found a canonicality gap: bytes after a name's NUL were ignored. Names must now be zero-padded.
+- **Signed bundles (`.kxp`):** the body plus two Ed25519 signatures, by an **author** and a **different approver** key, each over `"kervix.policy-signature/1" ‖ role ‖ sha256(body)`.
+  - `kxpolicy keygen | author | approve | verify --trust` implement the acceptance rule the vehicle will apply: both roles present, different keys, each trusted for its own role, both valid.
+- **`kxpolicy test`:** YAML fixtures evaluated by **the vehicle's C core (WASM)** on the compiled policy. `policies/tests/default.yaml` covers all 22 rules and K1–K4 (28/28), and lists any rule no fixture reaches.
+- **Lesson:** an unquoted comma inside a YAML flow list splits a predicate (`[ absdiff(a, b) > 20 ]`). The shipped policy had one. The compiler now names it, and the policy quotes it.
+
 ## 8. Proof: intents, capsules, envelopes, ledger
 
 ### 8.1 Intent binding (Agent-Safe Intent v1)
