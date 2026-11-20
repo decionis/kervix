@@ -210,11 +210,18 @@ Redemption checks, in order (the first failure wins and every failure is a capsu
 6. `KX_E_BINDING`: the executor's request came from a proposer other than the bound one.
 7. `KX_E_INTERLOCK`: the rule's interlock predicates are false *now*, for example the vehicle started moving.
 
-### 5.2 Escalation lifecycle
+### 5.2 Escalation lifecycle — implemented (`tests/target/escalation.sh`, 13/13 on QNX 8.0)
 
 `PENDING → (APPROVED → interlock re-check → GRANTED) | DENIED | EXPIRED (default 30 s)`
 
 The agent's `AWAIT` is a **deferred MsgReply**: the gateway thread stays blocked in the kernel with no polling. Priority inheritance means the HMI's RESOLVE (prio 30) preempts any agent work.
+
+As implemented:
+- The HMI channel `/dev/kervix/escalations` is its own dispatch channel, so secpol can type it. It provides a text list, `ESC_LIST`, a registered-pulse `ESC_SUBSCRIBE` doorbell, and `ESC_RESOLVE` (approve or deny, with an approver label plus the kernel-stamped pid).
+- Only the proposing process may `AWAIT` its escalation (`EPERM` otherwise).
+- **On approval the policy is re-evaluated on live telemetry before any grant is issued.** If the situation got worse (for example, the car drove off), the driver's "yes" becomes a BLOCK with the current reason. The grant's interlock is checked once more at redemption.
+- Timeouts come from the rule's `esc_timeout_ms`. Denial is `HUMAN_DENIED`, timeout is `ESCALATION_TIMEOUT`, and a full queue is `ESCALATION_QUEUE_FULL`. All three fail closed.
+- **Unblock handling:** resource-manager channels keep a REPLY-blocked client until the server replies. `kervixd` handles `_PULSE_CODE_UNBLOCK` (the client's rcvid is in the pulse value) and releases a parked `AWAIT` with `EINTR`, so a signalled or killed agent gateway exits at once. The escalation stays pending for the driver.
 
 ---
 

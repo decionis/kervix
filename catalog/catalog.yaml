@@ -180,3 +180,4 @@ reasons:
   - { id: 81,  name: POLICY_ACTIVATED,        text: "A new signed policy was activated." }
   - { id: 82,  name: AUTHORITY_UNAVAILABLE,   text: "Execution authority unreachable; actuation locked (fail closed)." }
   - { id: 83,  name: ACTUATOR_FAILED,         text: "The actuator bus did not acknowledge the command." }
+  - { id: 84,  name: ESCALATION_QUEUE_FULL,   text: "Too many requests are already waiting for the driver; failing closed." }
