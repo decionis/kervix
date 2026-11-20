@@ -21,3 +21,14 @@ These notes are the gotchas found while building Kervix. Each one becomes a call
 - The sender's type is in **`ctp->info.type_id`** on every message. `ConnectClientInfoExtraArgs(..., &type_id)` returned `0xFFFFFFFF` in our tests.
 - QNX 8 resmgr I/O handlers take `void *ocb` unless you define `IOFUNC_OCB_T`. Casting avoids `-Werror=incompatible-pointer-types`.
 - Server→client notifications: the client must `MsgRegisterEvent(&ev, fd)` before sending the event. This works across typed channels.
+
+## qcrypto (S3)
+- The baseline image ships `/proc/boot/qcrypto.conf` (`openssl-3 tags=*`), the plugin and `libcrypto.so.3`. Just link `-lqcrypto`.
+- Ed25519 uses **two names**: `qcrypto_keygen_request("ed25519")` for keys, but `qcrypto_signature_request("eddsa-pure")` for signing. `"ed25519"` as a signature name returns `-400 algorithm not found`.
+- Import a raw seed as PKCS#8 DER: `302e020100300506032b657004220420 || seed` with `QCRYPTO_KEY_FMT_DER`.
+- Export the raw public key: `qcrypto_pubkey_to_mem(..., QCRYPTO_KEY_FMT_DER)` gives 44 bytes of SPKI; the raw key is the last 32.
+- A context is **single-use after a one-shot op**: a second call returns `-412` (invalid state). Do not mistake that for "signature invalid" in negative tests.
+- Call `qcrypto_keypair_init(ctx, &zeroed_args)` before `qcrypto_keypair_generate()`.
+- `verify_oneshot` reports the result in `*status`: 1 = valid, 0 = invalid. Its return code only signals API errors.
+- Ed25519 is deterministic, so a published vector (RFC 8032 key + COSE Sig_structure) is a byte-exact test of the whole pipeline.
+
