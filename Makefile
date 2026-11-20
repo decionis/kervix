@@ -3,6 +3,7 @@
 .PHONY: help host asan test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test clean
 
 ARCHES ?= x86_64 aarch64le
+KX_CORE_TESTS = test_catalog test_policy test_sha256 test_intent
 
 help:
 	@echo "make host            build libkxcore + host tests (native)"
@@ -39,6 +40,7 @@ asan:
 test: host codegen-check
 	ctest --test-dir build/host --output-on-failure
 	npm run -s spike:s5
+	npm run -s conformance
 
 target: $(addprefix target-,$(ARCHES))
 
@@ -67,8 +69,8 @@ qemu-ssh:
 target-test: target-x86_64
 	scripts/qemu.sh status | grep -q running || $(MAKE) qemu-start
 	scripts/qemu.sh ssh 'mkdir -p /data/kervix/tests'
-	scripts/qemu.sh scp build/qnx-x86_64/target/libkxcore/tests/test_catalog build/qnx-x86_64/target/libkxcore/tests/test_policy /data/kervix/tests/
-	scripts/qemu.sh ssh 'cd /data/kervix/tests && uname -a && ./test_catalog && ./test_policy'
+	scripts/qemu.sh scp $(addprefix build/qnx-x86_64/target/libkxcore/tests/,$(KX_CORE_TESTS)) /data/kervix/tests/
+	scripts/qemu.sh ssh 'cd /data/kervix/tests && uname -a && for t in $(KX_CORE_TESTS); do ./$$t || exit 1; done'
 
 clean:
 	rm -rf build

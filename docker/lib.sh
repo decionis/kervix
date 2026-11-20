@@ -3,14 +3,16 @@
 # `docker info` can hang indefinitely when the daemon is down or its VM is
 # stuck; bound it without relying on coreutils `timeout` (absent on macOS).
 kx_docker_up() {
+  # Docker Desktop's Resource Saver pauses the VM when idle; waking can take
+  # tens of seconds, so allow up to KX_DOCKER_WAIT (default 45) seconds.
+  local limit="${KX_DOCKER_WAIT:-45}" waited=0
   docker info >/dev/null 2>&1 & local pid=$!
-  local _
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
-    kill -0 "$pid" 2>/dev/null || { wait "$pid"; return $?; }
-    sleep 1
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$waited" -ge "$limit" ]; then kill "$pid" 2>/dev/null; return 1; fi
+    [ "$waited" -eq 5 ] && echo "waiting for Docker engine (resuming from Resource Saver?)…" >&2
+    sleep 1; waited=$((waited + 1))
   done
-  kill "$pid" 2>/dev/null
-  return 1
+  wait "$pid"
 }
 
 kx_ensure_image() { # <image> <context dir>

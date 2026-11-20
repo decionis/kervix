@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "kervix/jcs.h"
 #include "kervix/policy.h"
 
 #define KX_DEFAULT_GRANT_TTL_MS  250u
@@ -114,10 +115,17 @@ uint16_t kx_validate_intent(const kx_intent_t *in) {
     const kx_action_spec_t *spec = kx_catalog_action(in->action);
     if (spec == NULL) return KX_R_UNKNOWN_ACTION;
 
-    /* actor id: non-empty and NUL-terminated within the buffer */
+    /* actor id: non-empty, NUL-terminated within the buffer, printable ASCII
+     * (it is bound into the canonical intent; no Unicode ambiguity allowed) */
     if (in->actor_id[0] == '\0' || memchr(in->actor_id, '\0', KX_ACTOR_LEN) == NULL) {
         return KX_R_PARAM_INVALID;
     }
+    for (size_t i = 0; i < KX_ACTOR_LEN && in->actor_id[i] != '\0'; i++) {
+        unsigned char c = (unsigned char)in->actor_id[i];
+        if (c < 0x20u || c > 0x7Eu) return KX_R_PARAM_INVALID;
+    }
+    /* Agent-Safe Intent requires an RFC 4122 UUID (version 1..8) */
+    if (!kx_uuid_valid(in->intent_id)) return KX_R_PARAM_INVALID;
 
     uint8_t want_scalar = 0, want_digest = 0;
     for (uint8_t i = 0; i < spec->n_params && i < KX_CATALOG_MAX_PARAMS; i++) {
