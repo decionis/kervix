@@ -19,6 +19,19 @@ AI agents *propose* vehicle actions. Kervix decides in microseconds, on live veh
 
 ![Driver approval card: "Your approval is needed. Install a software update on the brake controller. Requires your consent. Requested by your in-car assistant. The car stays parked and can't be driven while it installs. This can't be undone." Approve / Deny, countdown](docs/images/driver-approval.png)
 
+**The signed ledger, explored and verified live.** The Ledger tab mirrors every capsule the vehicle signed, through the read-only observer gateway. **Verify** runs the same checks as the offline `kervix-verify` CLI:
+- canonical bytes and identity;
+- signatures by the pinned vehicle key;
+- the chain;
+- no actuation without authority;
+- every decision replayed on the vehicle's own C policy core.
+
+Edit one record, even back-dating it by a few milliseconds, and verification fails at exactly that capsule:
+
+| Verified | One record edited |
+|---|---|
+| ![Ledger explorer: 10 signed capsules, VERIFIED, replay 4/4](docs/images/ledger-verified.png) | ![Capsule #7 back-dated by a few ms: NOT VERIFIED, TAMPERED at capsule #7](docs/images/ledger-tampered.png) |
+
 If the authority itself dies, nothing moves: [AUTHORITY OFFLINE · ACTUATION LOCKED](docs/evidence/dashboard-qnx-qemu-authority-offline.png), until `kx-supervisor` brings it back (≈ 0.1 s under emulation) with the restart recorded in the signed ledger.
 
 > 🚧 Built for the QNX Global Hackathon (Nov 20 – Dec 15, 2026). Status: [`docs/progress.md`](docs/progress.md). Design: [`docs/`](docs/README.md).

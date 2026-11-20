@@ -30,6 +30,7 @@
 #define KX_PATH_ACTUATORS "/dev/sdv/actuators"
 #define KX_PATH_ESCALATIONS "/dev/kervix/escalations"
 #define KX_PATH_POLICY    "/dev/kervix/policy"
+#define KX_PATH_DOSSIER   "/dev/kervix/dossier"
 /* Raw actuator access WITHOUT a grant: the maintenance path real ECUs have.
  * Its channel type has no connect rule for ANY process type (secpol): it
  * exists to show that bypassing Kervix is impossible, not merely forbidden. */
@@ -95,6 +96,35 @@ typedef struct {
 } kx_policy_status_t;
 #define KX_DCMD_POLICY_ACTIVATE __DIOF(_DCMD_MISC, 0x240, kx_policy_status_t)
 #define KX_DCMD_POLICY_STATUS   __DIOF(_DCMD_MISC, 0x241, kx_policy_status_t)
+
+/* The signed ledger, read-only (observer channel): the ledger explorer and
+ * any auditor fetch it record by record; the vehicle key travels with it. */
+#define KX_DOSSIER_POLICIES 8
+typedef struct {
+    uint64_t records, first_seq, last_seq;
+    uint32_t n_policies, _pad;
+    char     policies[KX_DOSSIER_POLICIES][17];   /* archived signed bundles: <hash16>, NUL-terminated */
+    char     _pad2[8];
+    char     jwk[256];
+} kx_dossier_info_t;
+typedef struct {
+    uint64_t seq;                                 /* in: wanted; out: returned */
+    uint32_t capsule_len, _pad;
+    uint8_t  capsule_id[32];
+    uint8_t  envelope[181];
+    uint8_t  _pad2[3];
+    char     capsule[6144 + 1];                   /* KX_CAPSULE_JCS_MAX + NUL */
+} kx_dossier_rec_t;
+typedef struct {
+    char     name[17];                            /* in: <hash16> of an archived bundle */
+    uint8_t  _pad[3];
+    uint32_t offset;                              /* in */
+    uint32_t total, n;                            /* out */
+    uint8_t  data[8192];
+} kx_policy_chunk_t;
+#define KX_DCMD_DOSSIER_INFO  __DIOF(_DCMD_MISC, 0x250, kx_dossier_info_t)
+#define KX_DCMD_DOSSIER_GET   __DIOTF(_DCMD_MISC, 0x251, kx_dossier_rec_t)
+#define KX_DCMD_POLICY_CHUNK  __DIOTF(_DCMD_MISC, 0x252, kx_policy_chunk_t)
 
 _Static_assert(sizeof(kx_decision_t) >= sizeof(kx_intent_t), "PROPOSE reuses one buffer");
 _Static_assert(sizeof(kx_decision_t) >= sizeof(kx_await_req_t), "AWAIT reuses one buffer");

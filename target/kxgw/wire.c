@@ -159,15 +159,16 @@ static const char *const OPS[KXW_OP__COUNT] = {
     [KXW_OP_NONE] = "", [KXW_OP_HELLO] = "hello", [KXW_OP_PROPOSE] = "propose", [KXW_OP_EXECUTE] = "execute",
     [KXW_OP_STATE] = "state", [KXW_OP_STATS] = "stats", [KXW_OP_ESCALATIONS] = "escalations",
     [KXW_OP_RESOLVE] = "resolve", [KXW_OP_SUBSCRIBE] = "subscribe", [KXW_OP_SIM] = "sim",
+    [KXW_OP_LEDGER_INFO] = "ledger_info", [KXW_OP_LEDGER] = "ledger", [KXW_OP_POLICY] = "policy",
 };
 
 enum {
     K_OP, K_ID, K_ACTION, K_ACTOR, K_INTENT_ID, K_EXPIRES, K_PARAMS, K_EXEC, K_AWAIT, K_GRANT_ID,
-    K_ESC_ID, K_APPROVE, K_APPROVER, K_CMD, K_HZ, K__COUNT
+    K_ESC_ID, K_APPROVE, K_APPROVER, K_CMD, K_HZ, K_FROM_SEQ, K_MAX, K_NAME, K__COUNT
 };
 static const char *const KEYS[K__COUNT] = {
     "op", "id", "action", "actor", "intent_id", "expires_at_ms", "params", "exec", "await", "grant_id",
-    "escalation_id", "approve", "approver", "cmd", "hz",
+    "escalation_id", "approve", "approver", "cmd", "hz", "from_seq", "max", "name",
 };
 
 int kxw_parse(const char *line, size_t n, kxw_req_t *rq, const char **err) {
@@ -227,6 +228,12 @@ int kxw_parse(const char *line, size_t n, kxw_req_t *rq, const char **err) {
         case K_APPROVER: rc = str(&c, rq->approver, sizeof rq->approver); break;
         case K_CMD: rc = str(&c, rq->cmd, sizeof rq->cmd); break;
         case K_HZ: rc = u32(&c, &rq->hz, 1000); break;
+        case K_FROM_SEQ:
+            rc = integer(&c, &rq->from_seq);
+            if (rc == 0 && rq->from_seq < 1) rc = fail(&c, "from_seq must be >= 1");
+            break;
+        case K_MAX: rc = u32(&c, &rq->max, 1000); break;
+        case K_NAME: rc = str(&c, rq->name, sizeof rq->name); break;
         default: rc = fail(&c, "unknown key"); break;
         }
         if (rc != 0) goto bad;
@@ -247,6 +254,10 @@ end:
         goto bad;
     }
     if (rq->op == KXW_OP_SIM && rq->cmd[0] == '\0') { fail(&c, "sim needs a cmd"); goto bad; }
+    if (rq->op == KXW_OP_POLICY && (strlen(rq->name) != 16 || strspn(rq->name, "0123456789abcdef") != 16)) {
+        fail(&c, "policy needs a name of 16 hex digits");
+        goto bad;
+    }
     return 0;
 bad:
     *err = c.err ? c.err : "malformed request";

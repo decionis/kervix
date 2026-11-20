@@ -26,6 +26,7 @@
  *   {"op":"resolve","escalation_id":3,"approve":true,"approver":"hmi:driver"}  (hmi)
  *   {"op":"subscribe","hz":10}                                  (observer)
  *   {"op":"sim","cmd":"scenario highway"}                       (world)
+ *   {"op":"ledger_info"} | {"op":"ledger","from_seq":1,"max":100} | {"op":"policy","name":"<hash16>"}  (observer)
  */
 #ifndef KERVIX_KXGW_WIRE_H
 #define KERVIX_KXGW_WIRE_H
@@ -51,6 +52,9 @@ typedef enum {
     KXW_OP_RESOLVE,
     KXW_OP_SUBSCRIBE,
     KXW_OP_SIM,
+    KXW_OP_LEDGER_INFO,
+    KXW_OP_LEDGER,
+    KXW_OP_POLICY,
     KXW_OP__COUNT
 } kxw_op_t;
 
@@ -79,6 +83,9 @@ typedef struct {
     char        approver[32];
     char        cmd[128];
     uint32_t    hz;
+    int64_t     from_seq;
+    uint32_t    max;
+    char        name[24];
 } kxw_req_t;
 
 /* Parse one line (without or with a trailing "\n" / "\r\n"). 0 = ok; on error

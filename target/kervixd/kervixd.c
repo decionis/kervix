@@ -21,6 +21,7 @@
  * usage: kervixd [-V vehicle_id] [-T tenant_uuid] [-A max_telemetry_age_ms] [-D datadir]
  *                [-R ledger_queue] [-S slow_ms (test)] [-v]
  */
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -28,6 +29,7 @@
 #include <qcrypto/qcrypto.h>
 #include <qcrypto/qcrypto_keys.h>
 #include <secpol/secpol.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -100,7 +102,7 @@ typedef struct {
     iofunc_attr_t          attr;
 } node_t;
 enum { CH_AGENT = 0, CH_ACT, CH_HMI, CH_OBS, CH_ADMIN, CH__COUNT };
-enum { N_INTENT = 0, N_STATS, N_REDEEM, N_ESC, N_POLICY, N__COUNT };
+enum { N_INTENT = 0, N_STATS, N_REDEEM, N_ESC, N_POLICY, N_DOSSIER, N__COUNT };
 static dispatch_t *g_disp[CH__COUNT];
 static node_t g_nodes[N__COUNT] = {
     { .path = KX_PATH_INTENT, .chan = CH_AGENT },
@@ -108,6 +110,7 @@ static node_t g_nodes[N__COUNT] = {
     { .path = KX_PATH_REDEEM, .chan = CH_ACT },
     { .path = KX_PATH_ESCALATIONS, .chan = CH_HMI },
     { .path = KX_PATH_POLICY, .chan = CH_ADMIN },  /* admin channel: only operator_t may connect (secpol) */
+    { .path = KX_PATH_DOSSIER, .chan = CH_OBS },   /* the signed ledger, read-only */
 };
 
 static uint64_t mono_ns(void) {
@@ -509,6 +512,89 @@ static int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, void *ocb_v) {
     for (int i = 0; i < N__COUNT; i++) if (ocb->attr == &g_nodes[i].attr) node = &g_nodes[i];
 
     switch (msg->i.dcmd) {
+    case KX_DCMD_DOSSIER_INFO: {
+        if (node != &g_nodes[N_DOSSIER]) return ENOTTY;
+        static kx_dossier_info_t di;                  /* serialized by the dossier lock below */
+        static pthread_mutex_t dl = PTHREAD_MUTEX_INITIALIZER;
+        pthread_mutex_lock(&dl);
+        memset(&di, 0, sizeof di);
+        kxl_info_t li;
+        kxl_info(&li);
+        di.records = li.records; di.first_seq = li.first_seq; di.last_seq = li.last_seq;
+        memcpy(di.jwk, li.jwk, sizeof di.jwk);
+        char dir[300];
+        snprintf(dir, sizeof dir, "%s/policy", g_datadir);
+        DIR *dp = opendir(dir);
+        struct dirent *de;
+        while (dp && (de = readdir(dp)) != NULL && di.n_policies < KX_DOSSIER_POLICIES) {
+            if (strlen(de->d_name) == 20 && !strcmp(de->d_name + 16, ".kxp") && strspn(de->d_name, "0123456789abcdef") == 16) {
+                memcpy(di.policies[di.n_policies], de->d_name, 16);
+                di.policies[di.n_policies++][16] = '\0';
+            }
+        }
+        if (dp) closedir(dp);
+        memset(&msg->o, 0, sizeof msg->o);
+        msg->o.nbytes = sizeof di;
+        iov_t iov[2];   /* ctp->iov holds nparts_max (1) entries */
+        SETIOV(&iov[0], &msg->o, sizeof msg->o);
+        SETIOV(&iov[1], &di, sizeof di);
+        MsgReplyv(ctp->rcvid, EOK, iov, 2);
+        pthread_mutex_unlock(&dl);
+        return _RESMGR_NOREPLY;
+    }
+    case KX_DCMD_DOSSIER_GET: {
+        if (node != &g_nodes[N_DOSSIER]) return ENOTTY;
+        static kx_dossier_rec_t rec;                  /* one reader at a time on the observer channel */
+        static pthread_mutex_t rl = PTHREAD_MUTEX_INITIALIZER;
+        uint64_t seq;
+        memcpy(&seq, data, sizeof seq);
+        pthread_mutex_lock(&rl);
+        memset(&rec, 0, offsetof(kx_dossier_rec_t, capsule) + 1);
+        int n = kxl_read(seq, rec.capsule, sizeof rec.capsule, rec.envelope, rec.capsule_id);
+        if (n < 0) { pthread_mutex_unlock(&rl); return ENOENT; }
+        rec.seq = seq;
+        rec.capsule_len = (uint32_t)n;
+        size_t out = offsetof(kx_dossier_rec_t, capsule) + (size_t)n + 1;
+        memset(&msg->o, 0, sizeof msg->o);
+        msg->o.nbytes = (uint32_t)out;
+        iov_t iov[2];   /* ctp->iov holds nparts_max (1) entries */
+        SETIOV(&iov[0], &msg->o, sizeof msg->o);
+        SETIOV(&iov[1], &rec, out);
+        MsgReplyv(ctp->rcvid, EOK, iov, 2);
+        pthread_mutex_unlock(&rl);
+        return _RESMGR_NOREPLY;
+    }
+    case KX_DCMD_POLICY_CHUNK: {
+        if (node != &g_nodes[N_DOSSIER]) return ENOTTY;
+        static kx_policy_chunk_t ch;
+        static pthread_mutex_t cl = PTHREAD_MUTEX_INITIALIZER;
+        pthread_mutex_lock(&cl);
+        memcpy(&ch, data, offsetof(kx_policy_chunk_t, total));
+        ch.name[16] = '\0';
+        int rc = EOK;
+        if (strlen(ch.name) != 16 || strspn(ch.name, "0123456789abcdef") != 16) rc = EINVAL;   /* no paths */
+        char path[300];
+        snprintf(path, sizeof path, "%s/policy/%s.kxp", g_datadir, ch.name);
+        int fd = rc == EOK ? open(path, O_RDONLY) : -1;
+        struct stat fst;
+        if (rc == EOK && (fd == -1 || fstat(fd, &fst) == -1)) rc = ENOENT;
+        if (rc == EOK) {
+            ch.total = (uint32_t)fst.st_size;
+            ssize_t r = ch.offset < ch.total ? pread(fd, ch.data, sizeof ch.data, (off_t)ch.offset) : 0;
+            ch.n = r > 0 ? (uint32_t)r : 0;
+        }
+        if (fd != -1) close(fd);
+        if (rc != EOK) { pthread_mutex_unlock(&cl); return rc; }
+        size_t out = offsetof(kx_policy_chunk_t, data) + ch.n;
+        memset(&msg->o, 0, sizeof msg->o);
+        msg->o.nbytes = (uint32_t)out;
+        iov_t iov[2];   /* ctp->iov holds nparts_max (1) entries */
+        SETIOV(&iov[0], &msg->o, sizeof msg->o);
+        SETIOV(&iov[1], &ch, out);
+        MsgReplyv(ctp->rcvid, EOK, iov, 2);
+        pthread_mutex_unlock(&cl);
+        return _RESMGR_NOREPLY;
+    }
     case KX_DCMD_POLICY_ACTIVATE:
     case KX_DCMD_POLICY_STATUS: {
         if (node != &g_nodes[N_POLICY]) return ENOTTY;
@@ -910,7 +996,7 @@ int main(int argc, char **argv) {
         n->io.close_ocb = io_close_ocb;
         n->io.unblock = io_unblock;
         n->io.write = io_write;
-        iofunc_attr_init(&n->attr, S_IFCHR | (i == N_STATS ? 0444 : i == N_POLICY ? 0600 : 0666), NULL, NULL);
+        iofunc_attr_init(&n->attr, S_IFCHR | (i == N_STATS || i == N_DOSSIER ? 0444 : i == N_POLICY ? 0600 : 0666), NULL, NULL);
         resmgr_attr_t ra2;
         memset(&ra2, 0, sizeof ra2);
         ra2.nparts_max = 1;

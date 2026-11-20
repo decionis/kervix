@@ -34,6 +34,7 @@
 #include <secpol/secpol.h>
 #include <signal.h>
 #include <stdatomic.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +45,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "kervix/cose.h"
 #include "kervix/kervix_abi.h"
 #include "kervix/policy.h"
 #include "kervix/seqlock.h"
@@ -59,7 +61,8 @@ static const int ROLE_MAX_CLIENTS[ROLE__COUNT] = { 8, 3, 4, 2 };   /* kervixd se
 static const uint32_t ROLE_OPS[ROLE__COUNT] = {
     OPB(KXW_OP_HELLO) | OPB(KXW_OP_PROPOSE) | OPB(KXW_OP_EXECUTE) | OPB(KXW_OP_STATE) | OPB(KXW_OP_STATS),
     OPB(KXW_OP_HELLO) | OPB(KXW_OP_ESCALATIONS) | OPB(KXW_OP_RESOLVE) | OPB(KXW_OP_STATE) | OPB(KXW_OP_STATS),
-    OPB(KXW_OP_HELLO) | OPB(KXW_OP_SUBSCRIBE) | OPB(KXW_OP_STATE) | OPB(KXW_OP_STATS),
+    OPB(KXW_OP_HELLO) | OPB(KXW_OP_SUBSCRIBE) | OPB(KXW_OP_STATE) | OPB(KXW_OP_STATS) |
+        OPB(KXW_OP_LEDGER_INFO) | OPB(KXW_OP_LEDGER) | OPB(KXW_OP_POLICY),
     OPB(KXW_OP_HELLO) | OPB(KXW_OP_SIM) | OPB(KXW_OP_STATE),
 };
 
@@ -447,6 +450,101 @@ static void op_sim(conn_t *c, const kxw_req_t *rq) {
     free(o);
 }
 
+/* ------------------------------------------------------------- ledger (observer) */
+
+static void op_ledger_info(conn_t *c, const kxw_req_t *rq) {
+    static kx_dossier_info_t di;
+    int fd = open(KX_PATH_DOSSIER, O_RDONLY);
+    int rc = fd == -1 ? errno : devctl(fd, KX_DCMD_DOSSIER_INFO, &di, sizeof di, NULL);
+    if (fd != -1) close(fd);
+    if (rc != EOK) { reply_error(c, rq, "authority unavailable (is kervixd running?)"); return; }
+    out_t *o = malloc(sizeof *o);
+    if (!o) return;
+    begin(o, "ledger_info", rq);
+    kx_jw_key(&o->w, "records"); kx_jw_int(&o->w, (int64_t)di.records);
+    kx_jw_key(&o->w, "first_seq"); kx_jw_int(&o->w, (int64_t)di.first_seq);
+    kx_jw_key(&o->w, "last_seq"); kx_jw_int(&o->w, (int64_t)di.last_seq);
+    di.jwk[sizeof di.jwk - 1] = '\0';
+    kx_jw_key(&o->w, "jwk"); kx_jw_strn(&o->w, di.jwk, strcspn(di.jwk, "\n"));
+    kx_jw_key(&o->w, "policies");
+    kx_jw_arr_begin(&o->w);
+    for (uint32_t i = 0; i < di.n_policies && i < KX_DOSSIER_POLICIES; i++) kx_jw_str(&o->w, di.policies[i]);
+    kx_jw_arr_end(&o->w);
+    finish(c, o, 1);
+    free(o);
+}
+
+/* stream records [from_seq, from_seq + max) as one line each, then ledger_end */
+static void op_ledger(conn_t *c, const kxw_req_t *rq) {
+    int fd = open(KX_PATH_DOSSIER, O_RDONLY);
+    if (fd == -1) { reply_error(c, rq, "authority unavailable (is kervixd running?)"); return; }
+    kx_dossier_rec_t *rec = malloc(sizeof *rec);
+    out_t *o = malloc(sizeof *o);
+    uint64_t seq = rq->from_seq > 0 ? (uint64_t)rq->from_seq : 1, end = seq + (rq->max ? rq->max : 100);
+    uint64_t sent = 0;
+    while (rec && o && seq < end && !c->dead) {
+        memset(rec, 0, offsetof(kx_dossier_rec_t, capsule));
+        memcpy(rec, &seq, sizeof seq);
+        if (devctl(fd, KX_DCMD_DOSSIER_GET, rec, sizeof *rec, NULL) != EOK) break;   /* past the end */
+        char env[256];
+        size_t en = kx_base64url(rec->envelope, sizeof rec->envelope, env);
+        begin(o, "record", rq);
+        kx_jw_key(&o->w, "seq"); kx_jw_int(&o->w, (int64_t)rec->seq);
+        kxw_emit_hex(&o->w, "capsule_id", "", rec->capsule_id, 32);
+        kx_jw_key(&o->w, "capsule"); kx_jw_strn(&o->w, rec->capsule, rec->capsule_len);
+        kx_jw_key(&o->w, "envelope"); kx_jw_strn(&o->w, env, en);
+        finish(c, o, 0);
+        seq++;
+        sent++;
+    }
+    close(fd);
+    if (o) {
+        begin(o, "ledger_end", rq);
+        kx_jw_key(&o->w, "sent"); kx_jw_int(&o->w, (int64_t)sent);
+        kx_jw_key(&o->w, "next_seq"); kx_jw_int(&o->w, (int64_t)seq);
+        finish(c, o, 1);
+    }
+    free(rec);
+    free(o);
+}
+
+/* stream an archived signed policy bundle in base64url chunks */
+static void op_policy(conn_t *c, const kxw_req_t *rq) {
+    int fd = open(KX_PATH_DOSSIER, O_RDONLY);
+    if (fd == -1) { reply_error(c, rq, "authority unavailable (is kervixd running?)"); return; }
+    kx_policy_chunk_t *ch = malloc(sizeof *ch);
+    out_t *o = malloc(sizeof *o);
+    char *b64 = malloc(4 * sizeof ch->data / 3 + 8);
+    uint32_t off = 0, total = 0;
+    int ok = ch && o && b64;
+    while (ok && !c->dead) {
+        memset(ch, 0, offsetof(kx_policy_chunk_t, data));
+        memcpy(ch->name, rq->name, 16);
+        ch->offset = off;
+        if (devctl(fd, KX_DCMD_POLICY_CHUNK, ch, sizeof *ch, NULL) != EOK) { ok = 0; break; }
+        total = ch->total;
+        if (ch->n == 0) break;
+        size_t bn = kx_base64url(ch->data, ch->n, b64);
+        begin(o, "policy_chunk", rq);
+        kx_jw_key(&o->w, "offset"); kx_jw_int(&o->w, off);
+        kx_jw_key(&o->w, "data"); kx_jw_strn(&o->w, b64, bn);
+        finish(c, o, 0);
+        off += ch->n;
+        if (off >= total) break;
+    }
+    close(fd);
+    if (!ok) reply_error(c, rq, "no such policy bundle");
+    else {
+        begin(o, "policy_end", rq);
+        kx_jw_key(&o->w, "name"); kx_jw_str(&o->w, rq->name);
+        kx_jw_key(&o->w, "total"); kx_jw_int(&o->w, total);
+        finish(c, o, 1);
+    }
+    free(ch);
+    free(o);
+    free(b64);
+}
+
 /* ------------------------------------------------------------- dispatch */
 
 static void op_hello(conn_t *c, const kxw_req_t *rq) {
@@ -487,6 +585,9 @@ static void handle(conn_t *c, const char *line, size_t n, uint32_t *obs_hz) {
     case KXW_OP_ESCALATIONS: push_escalations(c, &rq); break;
     case KXW_OP_RESOLVE: op_resolve(c, &rq); break;
     case KXW_OP_SIM: op_sim(c, &rq); break;
+    case KXW_OP_LEDGER_INFO: op_ledger_info(c, &rq); break;
+    case KXW_OP_LEDGER: op_ledger(c, &rq); break;
+    case KXW_OP_POLICY: op_policy(c, &rq); break;
     case KXW_OP_SUBSCRIBE: {
         *obs_hz = rq.hz < 1 ? 1 : rq.hz > 50 ? 50 : rq.hz;
         out_t *o = malloc(sizeof *o);
