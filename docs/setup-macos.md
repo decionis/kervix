@@ -30,6 +30,19 @@ docker/install-sdp.sh ~/Downloads/qnx-setup-2.0.4-202501021438-linux.run
 docker/qnx-build.sh qcc -V   # should list the gcc_ntox86_64 / gcc_ntoaarch64le variants
 ```
 
+Deployment in the myQNX dashboard assigns the license to your account; the
+Software Center must also activate it in the build environment. The installer
+activates the supplied key before installing SDP. If you leave the key blank,
+it synchronizes your deployed licenses and selects the key only when there is
+exactly one; otherwise it asks for your specific SDP 8.0 key. Password and key
+entry is hidden, and license keys are masked in the installer output. myQNX
+authentication uses a temporary options file in container RAM, removed on exit,
+because QNX Software Center logs passwords passed directly on the command line.
+
+Keep the `kervix-qnx-home` volume when rebuilding containers: it retains
+`/root/.qnx` license activation data as well as the SDK. See QNX's
+[command-line licensing instructions](https://www.qnx.com/developers/docs/qsc/com.qnx.doc.qsc.user_guide/topic/commandline_qsc.html).
+
 Why a Docker volume instead of `~/qnx800` on the Mac:
 - macOS file systems are case-insensitive, and Linux SDP paths can collide.
 - Volume I/O is much faster for compiler header lookups.
