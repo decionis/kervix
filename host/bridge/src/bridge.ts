@@ -46,6 +46,8 @@ export class Bridge extends EventEmitter {
   stats: string[] = [];
   escalations: unknown[] = [];
   feed: FeedEvent[] = [];
+  /** kervixd reachable? Derived from the observer's stats stream (1 Hz): stats = up, "authority unavailable" = down. */
+  authority: { up: boolean | null; since: number } = { up: null, since: Date.now() };
   private seq = 0;
   private server: http.Server | null = null;
   private wss: WebSocketServer | null = null;
@@ -90,11 +92,21 @@ export class Bridge extends EventEmitter {
       this.broadcast({ type: "telemetry", ...m });
     } else if (m.kind === "stats" && Array.isArray(m.text)) {
       this.stats = m.text as string[];
+      this.setAuthority(true);
       this.broadcast({ type: "stats", text: this.stats });
+    } else if (m.kind === "error" && role === "observer" && /authority unavailable/.test(String(m.error))) {
+      this.setAuthority(false);
     } else if (m.kind === "escalations" && role === "hmi") {
       this.escalations = Array.isArray(m.items) ? m.items : [];
       this.broadcast({ type: "escalations", items: this.escalations, available: m.available });
     }
+  }
+
+  private setAuthority(up: boolean): void {
+    if (this.authority.up === up) return;
+    this.authority = { up, since: Date.now() };
+    this.opts.log(`bridge: authority ${up ? "UP" : "DOWN (actuation locked)"}`);
+    this.broadcast({ type: "authority", ...this.authority });
   }
 
   private record(source: string, msg: GwMsg): void {
@@ -160,7 +172,7 @@ export class Bridge extends EventEmitter {
   snapshot(): Record<string, unknown> {
     const gateways: Record<string, unknown> = {};
     for (const role of Object.keys(this.gw) as Role[]) gateways[role] = { up: this.gw[role].up, hello: this.gw[role].hello };
-    return { type: "snapshot", target: this.opts.target, gateways, telemetry: this.telemetry, stats: this.stats, escalations: this.escalations, feed: this.feed };
+    return { type: "snapshot", target: this.opts.target, gateways, authority: this.authority, telemetry: this.telemetry, stats: this.stats, escalations: this.escalations, feed: this.feed };
   }
 
   // -------------------------------------------------------------------- host

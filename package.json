@@ -20,9 +20,10 @@
     "conformance": "npm run -s -w tests/conformance intent && npm run -s -w tests/conformance capsule && npm run -s -w tests/conformance dossier && npm run -s -w tests/conformance liar",
     "verify": "node host/verify/kervix-verify.mjs",
     "bridge": "node host/bridge/src/main.ts",
-    "test:host": "npm run -s -w host/bridge test && npm run -s -w host/agent test",
-    "typecheck": "tsc -p tsconfig.json",
-    "agent": "node host/agent/src/main.ts"
+    "test:host": "npm run -s -w host/bridge test && npm run -s -w host/agent test && npm run -s -w host/dashboard test",
+    "typecheck": "tsc -p tsconfig.json && tsc -p host/dashboard/tsconfig.json",
+    "agent": "node host/agent/src/main.ts",
+    "dashboard": "npm run -s -w host/dashboard build"
   },
   "devDependencies": {
     "typescript": "^5.9.0",

@@ -513,7 +513,7 @@ Out of scope: physical attacks, a kernel compromise, a compromised build chain, 
 | `host/bridge` | Node ≥ 22.18 (TypeScript via type stripping, no build step), `ws` | Four TCP connections to the `kxgw` roles; WebSocket fan-out to dashboards; REST for the agent; scenario control. **Implemented (M3).** |
 | `host/agent` | TS, `@anthropic-ai/sdk` | Vehicle agent (see §14); scripted replay mode |
 | `host/mcp` (Could) | TS, MCP SDK | `kervix-mcp`: one MCP tool per catalog action; every call goes PROPOSE → EXECUTE |
-| `host/dashboard` | Vite + React + React Three Fiber (+ optional `@react-three/xr`) | **Procedural 3D car twin** (primitives only, no external assets), telemetry, conversation, decision feed, escalation card, histogram, ledger explorer |
+| `host/dashboard` | Vite + React + React Three Fiber (+ optional `@react-three/xr`) | **Procedural 3D car twin** (primitives only, no external assets), telemetry, conversation, decision feed, escalation card, histogram, ledger explorer. **Implemented (M3)**, except the ledger explorer and WebXR. |
 | `host/verify` | TS, `@decionis/verify` | `kervix-verify` CLI (§9) |
 | `host/kxpolicy` | TS | Policy compiler, signer, test runner |
 
@@ -523,6 +523,19 @@ Out of scope: physical attacks, a kernel compromise, a compromised build chain, 
 - **Agent side:** REST `GET /api/{health,snapshot,state,feed,escalations}` and `POST /api/{propose,execute,resolve,sim,note}`. Every gateway line lands in a feed of the last 300 events, tagged with its source (`agent`, `dashboard`, …).
 - **Holds no authority:** it routes, records and shows; every verdict comes from `kervixd`. It binds to 127.0.0.1 by default.
 - **Tests:** CI runs `host/bridge/test` against an in-process **fake target**, which speaks the wire format and announces `"fake": true` on hello; it is never used for demos. `make target-bridge` runs it against QNX.
+
+**`host/dashboard` (implemented, M3):** `npm run dashboard` builds it, and `npm run bridge` serves it at http://127.0.0.1:8787. For development, use `npm run -w host/dashboard dev` with a Vite proxy to the bridge.
+- **3D twin** (`src/Car.tsx`): built only from primitives. It renders **telemetry, never requests**, so an action appears only after Kervix allowed it, the actuator applied it, and vsimd published the new state.
+  - Doors carry lock lights (`doors_locked_mask`), windows lower with `window_*_pct`, wheels turn and the lane marks scroll with speed.
+  - Hazards blink, the charge port glows while charging, the cabin light follows the HVAC setpoint, a halo pulses during an OTA flash, a red ring marks the immobilizer, and a beacon shows location sharing.
+- **Panels:**
+  - Gateway chips show each role's secpol type.
+  - The escalation card has **Approve / Deny** and a fail-closed countdown.
+  - Verdict tiles use the status colors with icon + label.
+  - The PROPOSE latency histogram (log2 buckets from `/dev/kervix/stats`) has a hover tooltip and a table view, and is labelled *emulated, not representative* on QEMU.
+  - The feed interleaves the driver, the agent's words and reasoning summaries, its proposals, Kervix's verdicts and the actuator's results.
+  - World controls set the scenario and driver.
+- **AUTHORITY OFFLINE · ACTUATION LOCKED:** the bridge derives authority up/down from the observer's 1 Hz stats stream. The screenshots in `docs/evidence/` were taken against QNX in QEMU (`tools/screenshot.mjs`, DevTools protocol, GPU on so WebGL renders).
 
 Wire format target↔host: newline-delimited JSON over TCP, one connection per role. `kxgw` is a small C program that converts JSON ⇄ ABI structs with a fixed-schema parser (no general JSON library on target; inputs are bounded at 4 KiB per line).
 

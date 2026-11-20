@@ -19,6 +19,8 @@ export class FakeTarget {
   ports: Record<Role, number> = { agent: 0, hmi: 0, observer: 0, world: 0 };
   tel: Tel = { speed_dkph: 0, gear: 0, park_brake: 1, soc_dpct: 800, charging: 0, driver_present: 1, service_mode: 0, doors_locked_mask: 15, hvac_setpoint_dc: 210, window_fl_pct: 0, window_fr_pct: 0, window_rl_pct: 0, window_rr_pct: 0, hazard_on: 0, acc_target_kph: 0, charge_limit_pct: 80, immobilizer_on: 0, location_shared: 0, ota_state: 0 };
   seq = 0;
+  /** simulate kervixd being down: stats fail the way the real observer gateway reports it */
+  authorityDown = false;
   private grants = new Map<string, { spent: boolean; action: string }>();
   private escs: Esc[] = [];
   private nextEsc = 1;
@@ -117,7 +119,14 @@ export class FakeTarget {
       lineReader(
         (m) => void this.handle(role, s, m as unknown as Record<string, unknown>, (hz) => {
           if (telTimer) clearInterval(telTimer);
-          telTimer = setInterval(() => this.send(s, { kind: "telemetry", t_ms: Date.now(), ...this.telemetry(), done: true }), 1000 / hz);
+          let k = 0;
+          telTimer = setInterval(() => {
+            this.send(s, { kind: "telemetry", t_ms: Date.now(), ...this.telemetry(), done: true });
+            if (k++ % 5 === 0) {
+              if (this.authorityDown) this.send(s, { kind: "error", error: "authority unavailable (is kervixd running?)", done: true });
+              else this.send(s, { kind: "stats", text: ["FAKE TARGET (no Kervix)"], done: true });
+            }
+          }, 1000 / hz);
           this.timers.push(telTimer);
         }),
         () => this.send(s, { kind: "error", error: "expected a JSON object", done: true }),
@@ -136,6 +145,7 @@ export class FakeTarget {
       case "state":
         return this.send(s, { kind: "state", id, ...this.telemetry(), done: true });
       case "stats":
+        if (this.authorityDown) return this.send(s, { kind: "error", id, error: "authority unavailable (is kervixd running?)", done: true });
         return this.send(s, { kind: "stats", id, text: ["FAKE TARGET (no Kervix)"], done: true });
       case "subscribe":
         subscribe(Math.max(1, Math.min(50, Number(r.hz ?? 10))));
