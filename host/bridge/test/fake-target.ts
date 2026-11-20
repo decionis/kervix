@@ -156,8 +156,10 @@ export class FakeTarget {
       }
       case "sim": {
         const cmd = String(r.cmd);
-        if (cmd === "scenario highway") Object.assign(this.tel, { speed_dkph: 1100, gear: 3, park_brake: 0 });
-        else if (cmd === "scenario park") Object.assign(this.tel, { speed_dkph: 0, gear: 0, park_brake: 1 });
+        if (cmd === "scenario highway") Object.assign(this.tel, { speed_dkph: 1100, gear: 3, park_brake: 0, charging: 0 });
+        else if (cmd === "scenario city") Object.assign(this.tel, { speed_dkph: 300, gear: 3, park_brake: 0, charging: 0 });
+        else if (cmd === "scenario park") Object.assign(this.tel, { speed_dkph: 0, gear: 0, park_brake: 1, charging: 0 });
+        else if (cmd === "scenario charging") Object.assign(this.tel, { speed_dkph: 0, gear: 0, park_brake: 1, charging: 1 });
         return this.send(s, { kind: "sim", id, ok: true, reply: [`ok ${cmd} (fake)`], done: true });
       }
     }
