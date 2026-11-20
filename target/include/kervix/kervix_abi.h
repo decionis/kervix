@@ -29,6 +29,10 @@
 #define KX_PATH_REDEEM    "/dev/kervix/redeem"
 #define KX_PATH_ACTUATORS "/dev/sdv/actuators"
 #define KX_PATH_ESCALATIONS "/dev/kervix/escalations"
+/* Raw actuator access WITHOUT a grant: the maintenance path real ECUs have.
+ * Its channel type has no connect rule for ANY process type (secpol): it
+ * exists to show that bypassing Kervix is impossible, not merely forbidden. */
+#define KX_PATH_ACTUATORS_RAW "/dev/sdv/actuators/raw"
 
 #define KX_MAX_ESCALATIONS 32
 #define KX_ESC_LIST_MAX    16
@@ -66,6 +70,8 @@ typedef struct {
 #define KX_DCMD_EFFECT    __DIOT(_DCMD_MISC, 0x211, kx_effect_t)
 /* EXECUTE on the actuator bus: in kx_execute_req_t; ret_val = kx_reason_t */
 #define KX_DCMD_EXECUTE   __DIOT(_DCMD_MISC, 0x220, kx_execute_req_t)
+/* RAW_APPLY on the raw maintenance path: in kx_intent_t (no grant) */
+#define KX_DCMD_RAW_APPLY __DIOT(_DCMD_MISC, 0x221, kx_intent_t)
 /* AWAIT (agent channel): in kx_await_req_t, out kx_decision_t; deferred reply */
 #define KX_DCMD_AWAIT     __DIOTF(_DCMD_MISC, 0x202, kx_decision_t)
 /* HMI channel */

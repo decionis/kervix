@@ -1,6 +1,6 @@
 # Kervix top-level shortcuts. Host targets run natively. QNX targets run in
 # the qnx-build container (docker/qnx-build.sh), which works on macOS and Linux.
-.PHONY: help host asan wasm test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 target-escalation target-ledger tsan clean
+.PHONY: help host asan wasm test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 target-escalation target-ledger target-secpol tsan clean
 
 ARCHES ?= x86_64 aarch64le
 KX_CORE_TESTS = libkxcore/tests/test_catalog libkxcore/tests/test_policy libkxcore/tests/test_sha256 \
@@ -22,6 +22,7 @@ help:
 	@echo "make target-m1       authority MVP acceptance (propose/grant/redeem/attacks) on QNX"
 	@echo "make target-escalation  driver approval / deny / timeout acceptance on QNX"
 	@echo "make target-ledger   signed ledger + kervix-verify + tamper + crash recovery on QNX"
+	@echo "make target-secpol   every component under an enforced secpol type + kx-rogue red team on QNX"
 	@echo "make qemu-stop       stop the VM"
 
 node_modules: package.json package-lock.json
@@ -104,6 +105,10 @@ target-escalation:
 # signed ledger: keys, capsules, export, offline verify, tampering, crash recovery, K3
 target-ledger:
 	tests/target/ledger.sh
+
+# kernel-enforced least privilege: typed boot, legitimate roles, kx-rogue red team
+target-secpol:
+	tests/target/secpol.sh
 
 clean:
 	rm -rf build

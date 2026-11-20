@@ -106,6 +106,28 @@ allow kervix_t self:ability { settypeid:kervix_run_t };
 - Attaching a path without an `allow_attach` rule fails with **`EACCES`**. This covers both path squatting by an agent and a server attaching something unlisted.
 - Allowed connects and devctls work normally. A `MsgRegisterEvent` pulse is delivered across a typed channel.
 
+**Implemented in M2 (`tests/target/secpol.sh`, `make target-secpol`, PASS on QNX 8.0 / QEMU):** the real policy is `target/secpol/kervix.secpol`. It differs from the sketch above in three ways: vsimd has one channel type per path (`vsim_tel_ch_t`, `vsim_ctl_ch_t`, `vsim_act_ch_t`); `kx_admin_ch_t` and `obsgw_t`/`supervisor_t` wait for their milestones; and each daemon gets explicit rules for the system services it uses (`random_t`, `slogger_t`, and `devb_t` for kervixd's ledger and the operator's export).
+- `vsimd`, `kervixd` and `sdv_actuatord` are baked into the image and started at boot with `on -T <type>` (`target/image/snippets/`). Each attaches its paths, then drops to its `_run_t` type.
+- **Legitimate roles see zero denials:** the agent (`agentgw_t`, uid 400) proposes and executes, the driver HMI (`hmigw_t`) approves an escalation, and the operator (`operator_t`) reads telemetry and stats and exports the ledger.
+- **`kx-rogue`** (`target/kx-rogue`) runs ten attacks a compromised agent would try, and reports the layer that stopped each one:
+
+| Attack | No enforcement | secpol, agent as **root** | deployed agent (`agentgw_t`, uid 400) |
+|---|---|---|---|
+| actuate the bus directly (`/dev/sdv/sim/actuate`) | OPEN | kernel (EPERM) | kernel |
+| raw maintenance path (`/dev/sdv/actuators/raw`) | OPEN | kernel (EPERM) | kernel |
+| redeem a forged grant (`/dev/kervix/redeem`) | crypto (MAC) | kernel (EPERM) | kernel |
+| approve its own escalation (`/dev/kervix/escalations`) | OPEN | kernel (EPERM) | kernel |
+| rewrite vehicle state (`/dev/sdv/sim/ctl`) | OPEN | kernel (EPERM) | kernel |
+| impersonate the authority (attach `/dev/kervix/intent`) | OPEN | kernel (EPERM) | kernel |
+| impersonate the actuator bus (attach `/dev/sdv/actuators`) | OPEN | kernel (EPERM) | kernel |
+| map telemetry shm read-write | OPEN | OPEN | kernel (EACCES, uid) |
+| read kervixd memory (`/proc/<pid>/as`) | OPEN | OPEN | kernel (EPERM; `--secure-procfs` + uid) |
+| kill kervixd | OPEN | OPEN | kernel (EPERM, uid) |
+| **open** | **9/10** | **3/10** | **0/10** |
+
+  So secpol alone confines every *channel and path* even for root. Shared memory, `/proc` and signals are uid/permission matters, so the deployed agent also runs under its own uid. The kernel log names each refused channel type (`slog2info | grep secpolgenerate`).
+- **Lesson (inherited connections):** `channel_connect` is checked when a connection is *made*. A connection inherited across `spawn`/`fork` (for example the stdout of a boot script redirected to a file) is reused by libc without a new check. Observed: kervixd wrote its ledger to `/data` with no `devb_t` rule because it inherited the log file's connection to the filesystem. Launchers must not leak fds into confined processes, and the policy states every service a daemon needs explicitly, so it never depends on that accident.
+
 **Enforcement modes:**
 - **Development (S1):** `mkqnximage --secpol=open` + base policy + `type <t> restricted` in the `secpolgenerate` config. Kervix types are held to the policy and the rest of the system stays permissive. Reproduce with `spikes/s1-secpol/run.sh`.
 - **Demo/submission (M2):** `--secpol=secure`, with a complete policy. System-service rules are harvested with `secpolgenerate`, and Kervix rules are written by hand.

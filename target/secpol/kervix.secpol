@@ -1,0 +1,63 @@
+# Kervix security policy (QNX 8.0 secpol). Architecture: docs/03-architecture.md §3.
+#
+# Topology before policy: the kernel decides WHO may talk to WHOM; kervixd
+# decides WHAT may happen. Every Kervix path is attached on its own channel and
+# typed here; a connect without a rule below is refused by procnto (EPERM),
+# whatever the caller's uid.
+
+# ---- process types --------------------------------------------------------
+type vsim_t;       type vsim_run_t;       # vehicle simulator (start / after init)
+type kervix_t;     type kervix_run_t;     # the execution authority
+type actuator_t;   type actuator_run_t;   # actuator bus gateway (the only process that moves the car)
+type agentgw_t;                           # AI-agent gateway: untrusted
+type hmigw_t;                             # driver HMI gateway
+type operator_t;                          # workshop / test operator console
+
+# ---- channel types (one per trust boundary) -------------------------------
+type vsim_tel_ch_t;  type vsim_ctl_ch_t;  type vsim_act_ch_t;
+type kx_agent_ch_t;  type kx_act_ch_t;    type kx_hmi_ch_t;
+type act_bus_ch_t;   type act_raw_ch_t;
+
+# ---- who may attach which path, and the type its channel gets -------------
+allow_attach vsim_t     /dev/sdv/telemetry       vsim_tel_ch_t;
+allow_attach vsim_t     /dev/sdv/sim/ctl         vsim_ctl_ch_t;
+allow_attach vsim_t     /dev/sdv/sim/actuate     vsim_act_ch_t;
+allow_attach kervix_t   /dev/kervix/intent       kx_agent_ch_t;
+allow_attach kervix_t   /dev/kervix/stats        kx_agent_ch_t;
+allow_attach kervix_t   /dev/kervix/redeem       kx_act_ch_t;
+allow_attach kervix_t   /dev/kervix/escalations  kx_hmi_ch_t;
+allow_attach actuator_t /dev/sdv/actuators       act_bus_ch_t;
+allow_attach actuator_t /dev/sdv/actuators/raw   act_raw_ch_t;
+
+# ---- topology: every connect not listed here is refused by the kernel -----
+allow { agentgw_t hmigw_t operator_t }            kx_agent_ch_t:channel connect;  # propose, await, stats
+allow { actuator_t actuator_run_t }               kx_act_ch_t:channel connect;    # redeem + effects
+allow { hmigw_t operator_t }                      kx_hmi_ch_t:channel connect;    # driver approvals
+allow { agentgw_t operator_t }                    act_bus_ch_t:channel connect;   # execute WITH a grant
+allow { actuator_t actuator_run_t }               vsim_act_ch_t:channel connect;  # only the actuator moves the car
+allow { kervix_t kervix_run_t agentgw_t hmigw_t operator_t } vsim_tel_ch_t:channel connect;
+allow operator_t                                  vsim_ctl_ch_t:channel connect;  # test harness drives the scenario
+# act_raw_ch_t: deliberately NO connect rule for any type. Bypassing Kervix is impossible, not just forbidden.
+
+# ---- one-way privilege drop after initialisation ---------------------------
+derive_type vsim_t     run vsim_run_t;
+derive_type kervix_t   run kervix_run_t;
+derive_type actuator_t run actuator_run_t;
+allow vsim_t     self:ability { settypeid:vsim_run_t };
+allow kervix_t   self:ability { settypeid:kervix_run_t };
+allow actuator_t self:ability { settypeid:actuator_run_t };
+
+# ---- system services the restricted Kervix types need ------------------------
+# (types of base-OS services; found by running restricted and reading the
+#  secpolgenerate denial log: tests/target/secpol.sh)
+type random_t;
+type slogger_t;
+type devb_t;
+allow { kervix_t kervix_run_t agentgw_t hmigw_t operator_t } random_t:channel connect;  # DRBG entropy; intent UUIDs
+allow { kervix_t kervix_run_t operator_t } devb_t:channel connect;        # ledger + vehicle key; operator export
+# NOTE secpol checks channel_connect when a connection is ATTACHED. A process that
+# inherits an open fd keeps that connection (libc reuses it), so launchers must
+# not leak fds into restricted processes. Kervix daemons get explicit rules here
+# rather than relying on how they happened to be started.
+allow { vsim_t vsim_run_t kervix_t kervix_run_t actuator_t actuator_run_t agentgw_t hmigw_t operator_t }
+      slogger_t:channel connect;                                          # slog2 logging
