@@ -199,7 +199,7 @@ Bounds: catalog ≤ 64 actions; ≤ 256 rules total; ≤ 8 predicates per rule; 
                        └──────────────▶ EXPIRED ───────┘ (capsule: expired)
 ```
 
-Redemption checks, in order (the first failure wins and every failure is a capsule):
+Redemption checks, in order (the first failure wins and every failure is a capsule). Implemented in `kervix/grant.h`. Any failure after the MAC/unknown/spent checks **consumes** the grant (fail-closed: re-propose against fresh state):
 1. `KX_E_MAC`: MAC mismatch (forged or tampered).
 2. `KX_E_UNKNOWN`: grant_id not in the table (never issued, or reaped).
 3. `KX_E_SPENT`: already redeemed (replay).

@@ -49,7 +49,24 @@ typedef struct {
     int32_t  v[KX_TF__COUNT];    /* indexed by kx_tfield_t */
 } kx_telemetry_t;
 
+/* ---- execution grant (issued by kervixd, redeemed once by sdv_actuatord) -- */
+typedef struct {
+    uint8_t  grant_id[16];        /* CSPRNG */
+    uint8_t  intent_hash[32];     /* Agent-Safe Intent v1 hash the grant is bound to */
+    uint8_t  params_digest[32];   /* exact command authorized (kx_params_digest) */
+    uint8_t  policy_hash8[8];     /* first 8 bytes of the active policy hash */
+    uint16_t action;
+    uint16_t _pad;
+    uint32_t proposer_type;       /* secpol type id of the proposing client */
+    int32_t  proposer_pid;
+    uint32_t _pad2;
+    uint64_t issued_mono_ns;
+    uint64_t not_after_mono_ns;
+    uint8_t  mac[32];             /* HMAC-SHA256(per-boot key, all fields above) */
+} kx_grant_t;
+
 _Static_assert(sizeof(kx_param_t) == 16, "kx_param_t ABI size");
+_Static_assert(sizeof(kx_grant_t) == 152, "kx_grant_t ABI size");
 _Static_assert(sizeof(kx_intent_t) == 2 + 2 + 1 + 1 + 2 + 16 + KX_ACTOR_LEN + 16 * KX_MAX_PARAMS + 32 + 8,
                "kx_intent_t ABI size");
 _Static_assert(sizeof(kx_telemetry_t) % 8 == 0, "kx_telemetry_t alignment");

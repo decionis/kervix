@@ -175,5 +175,6 @@ reasons:
   - { id: 64,  name: GRANT_PARAMS,            text: "Command does not match the authorized parameters." }
   - { id: 65,  name: GRANT_BINDING,           text: "Grant presented by a different client than it was issued to." }
   - { id: 66,  name: GRANT_INTERLOCK,         text: "Vehicle state changed since authorization; interlock failed." }
+  - { id: 67,  name: GRANT_TABLE_FULL,        text: "Too many outstanding grants; failing closed." }
   - { id: 80,  name: AUTHORITY_EPOCH,         text: "Execution authority (re)started; new epoch." }
   - { id: 81,  name: POLICY_ACTIVATED,        text: "A new signed policy was activated." }
