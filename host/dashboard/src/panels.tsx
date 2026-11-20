@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { driverText } from "./driverText.ts";
 import { GEAR, denseHistogram, fmtParams, type Escalation, type FeedEvent, type GwMsg, type Stats, type Tel } from "./model.ts";
 
 // ---------------------------------------------------------------- verdicts
@@ -63,18 +64,20 @@ export function EscalationCard({ items, receivedAt, onResolve }: { items: Escala
     await onResolve(e.escalation_id, approve);
     setBusy(null);
   };
+  const t = driverText(e.intent, e.reason, e.reason_text);
+  const secs = Math.ceil(left / 1000);
   return (
-    <div className="card esc" role="alertdialog" aria-label="Driver approval required">
+    <div className="card esc" role="alertdialog" aria-label="Your approval is needed">
       <h2>
-        <Badge v="ESCALATE" /> <span className="sub">driver approval required · #{e.escalation_id}{items.length > 1 ? ` · ${items.length - 1} more waiting` : ""}</span>
+        <span className="badge ESCALATE"><span aria-hidden>!</span>Your approval is needed</span>
+        {items.length > 1 && <span className="sub"> · {items.length - 1} more waiting</span>}
       </h2>
-      <div className="what">
-        {e.intent.action} <code>{fmtParams(e.intent.params)}</code>
-      </div>
+      <div className="what">{t.action}</div>
       <div className="why">
-        {e.reason_text} Requested by <b>{e.intent.actor}</b> · rule <code>{e.rule}</code>. Re-checked on live vehicle state before a grant is issued.
+        {t.why} Requested by {t.requester}.{t.consequence ? ` ${t.consequence}` : ""}
       </div>
-      <div className="meter" title={`${(left / 1000).toFixed(0)} s left`}>
+      {t.reference && <div className="ref">Update {t.reference}</div>}
+      <div className="meter" title={`${secs} s left`}>
         <div style={{ width: `${Math.min(100, (left / total) * 100)}%` }} />
       </div>
       <div className="actions">
@@ -84,9 +87,10 @@ export function EscalationCard({ items, receivedAt, onResolve }: { items: Escala
         <button className="btn deny" disabled={busy !== null} onClick={() => act(false)}>
           ✕ Deny
         </button>
-        <span className="meta" style={{ alignSelf: "center", color: "var(--ink-muted)", fontSize: 12 }}>
-          {(left / 1000).toFixed(0)} s, then it is refused (fail closed)
-        </span>
+        <span className="countdown">{secs} s left · if you don't answer, it won't happen</span>
+      </div>
+      <div className="tech">
+        #{e.escalation_id} · {e.intent.action} · rule {e.rule} · {e.intent.actor} · re-checked on live vehicle state before anything runs
       </div>
     </div>
   );

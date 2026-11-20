@@ -578,7 +578,7 @@ Out of scope: physical attacks, a kernel compromise, a compromised build chain, 
   - Hazards blink, the charge port glows while charging, the cabin light follows the HVAC setpoint, a halo pulses during an OTA flash, a red ring marks the immobilizer, and a beacon shows location sharing.
 - **Panels:**
   - Gateway chips show each role's secpol type.
-  - The escalation card has **Approve / Deny** and a fail-closed countdown.
+  - The escalation card speaks to the driver in the second person (`src/driverText.ts`): the action in plain words ("Install a software update on the brake controller"), why they are asked ("Requires your consent."), the consequence from the catalog's irreversibility ("This can't be undone."), a short update reference (`9F2C-4E1A`) instead of the digest, **Approve / Deny** and a fail-closed countdown. Rule, action id and actor stay in a muted footer for operators.
   - Verdict tiles use the status colors with icon + label.
   - The PROPOSE latency histogram (log2 buckets from `/dev/kervix/stats`) has a hover tooltip and a table view, and is labelled *emulated, not representative* on QEMU.
   - The feed interleaves the driver, the agent's words and reasoning summaries, its proposals, Kervix's verdicts and the actuator's results.

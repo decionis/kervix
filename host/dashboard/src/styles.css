@@ -67,7 +67,11 @@ button { font: inherit; color: inherit; }
 
 .esc { border: 2px solid var(--warning); }
 .esc .what { font-size: 17px; font-weight: 600; margin: 4px 0; }
-.esc .why { color: var(--ink-2); font-size: 13px; }
+.esc .what { font-size: 19px; }
+.esc .why { color: var(--ink-1); font-size: 14px; line-height: 1.4; }
+.esc .ref { color: var(--ink-2); font-size: 12px; margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+.esc .countdown { align-self: center; color: var(--ink-2); font-size: 12px; }
+.esc .tech { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--grid); color: var(--ink-muted); font-size: 11px; }
 .esc .actions { display: flex; gap: 10px; margin-top: 10px; }
 .btn { border-radius: 8px; padding: 8px 14px; border: 1px solid var(--ring); background: var(--surface-2); cursor: pointer; font-weight: 600; }
 .btn:hover { border-color: var(--ink-muted); }
