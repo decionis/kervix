@@ -130,7 +130,14 @@ allow kervix_t self:ability { settypeid:kervix_run_t };
 
 **Enforcement modes:**
 - **Development (S1):** `mkqnximage --secpol=open` + base policy + `type <t> restricted` in the `secpolgenerate` config. Kervix types are held to the policy and the rest of the system stays permissive. Reproduce with `spikes/s1-secpol/run.sh`.
-- **Demo/submission (M2):** `--secpol=secure`, with a complete policy. System-service rules are harvested with `secpolgenerate`, and Kervix rules are written by hand.
+- **Release image (M2, implemented; `make target-secpol-secure`, 18/18 on QNX 8.0 / QEMU):** `--secpol=secure`. One complete policy is compiled into the IFS (`/proc/boot/secpol.bin`), nothing learns, and **no process runs untyped** (procnto aside). The policy has three parts:
+  - `target/secpol/kervix.secpol`: written by hand, the Kervix types and topology.
+  - `target/secpol/system.secpol`: **harvested** by `scripts/secpol-harvest.sh` (`make secpol-harvest`). It boots the open image with every Kervix type `restricted`, runs everything the release image will do (boot, ssh/scp, every role, `kx-rogue`, ledger export), and keeps only the rules the Kervix policy lacks: 24 stock QNX services and the admin shell. Blocks for Kervix types are dropped, so learning can never widen them. Every diff is reviewed before commit.
+  - `target/secpol/monitor.secpol`: `secpolgenerate` in **monitor mode** (`secpolgen_t`, uid 40). It records every refusal in `/dev/secpolgenerate/errors`, which only `operator_t` may read. That log is how the test proves zero denials system-wide.
+- What secure mode adds over open mode, all kernel-verified:
+  - **The root admin shell is confined too.** `user_root_t` may only become `agentgw_t`, `hmigw_t` or `operator_t`. `on -T kervix_t|actuator_t|vsim_t` fails with `EPERM` (`settypeid` refused), so not even root can launch a fake authority or actuator. Creating a process-manager link is refused (`pathspace`).
+  - **No privilege gain across transitions:** `secpolcompile` rejects any rule that would give `user_root_t` more than `sshd_t` (it starts as `sshd_t`). Granting the refusal log to the root shell therefore failed to compile, and the log belongs to `operator_t`.
+  - The red-team results are the same as in open mode: as root, the 7 channel/path attacks are refused by the kernel; the deployed agent (uid 400) has 0/10 open.
 
 **Caller identity in handlers (S2):** the kernel stamps the sender's secpol type into **every message's `ctp->info.type_id`**. Handlers check it per request at zero extra cost, and it can't be forged.
 - Note: on 8.0, `ConnectClientInfoExtraArgs(..., &type_id)` returned `SECPOL_INVALID_TYPE` in our test. Do not rely on it.
