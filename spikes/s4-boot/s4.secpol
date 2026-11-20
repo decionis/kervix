@@ -1,0 +1,4 @@
+# Spike S4: types for the three gateway roles (enforcement comes in M2).
+type kxgw_agent_t;
+type kxgw_hmi_t;
+type kxgw_obs_t;
