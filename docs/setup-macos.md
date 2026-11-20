@@ -1,35 +1,42 @@
 # Developer setup: macOS (Apple Silicon or Intel)
 
 QNX SDP 8.0 ships no macOS host tools, so Kervix uses QNX's documented macOS workflow:
-- Install the SDP **and its Linux host tools** with QNX Software Center for macOS.
-- Run the Linux tools inside an x86_64 Docker container (`docker/qnx-build.sh`).
+- Run the SDP's Linux host tools inside an x86_64 Docker container (`docker/qnx-build.sh`).
 - Boot QNX targets in QEMU on the Mac, or on a Raspberry Pi 4.
 
 Everything else (libkxcore tests and the TypeScript host apps) runs natively on macOS.
 
+The SDP is installed headlessly with the Software Center **Linux** command-line tool inside the container. No macOS Software Center is needed.
+
 > On native x86_64 Linux (Ubuntu 22.04/24.04) skip Docker: install the SDP normally, `source ~/qnx800/qnxsdp-env.sh`, and run the same CMake commands directly.
 
-## 1. One-time: QNX account, license, SDP  *(manual — needs your myQNX login)*
+## 1. One-time: QNX account and license  *(manual)*
 
-1. Create a **myQNX** account and request the free **QNX Everywhere** non-commercial license at <https://qnx.software/en/developers/get-started/qnx-everywhere>.
-2. Install **QNX Software Center for macOS hosts** and sign in. The license is activated there.
-3. **Add Installation…** → **QNX SDP 8.0**, path **`~/qnx800`**.
-4. **Manage Installation → Available**, then add:
-   - **QNX SDP Host Tools (Linux 64-bit)**. This is required, because the container uses these tools.
-   - For a QEMU target: packages for the x86_64 QEMU image (`mkqnximage` + virtio drivers). Spike S0 records the exact list here.
-   - For the RPi4 target: the **Raspberry Pi 4 quick-start target image** for QNX 8.0.
-   - For Kervix features: **qcrypto** (+ `openssl-3` provider), **security policy tools** (`secpolcompile`, `secpolgenerate`), **tracelogger** / System Profiler support. S0–S3 record the exact package ids here.
-5. Check the result: `ls ~/qnx800/qnxsdp-env.sh ~/qnx800/host/linux/x86_64` lists both paths, and `ls ~/.qnx` shows the license directory.
+1. Create a **myQNX** account.
+2. Request the free **QNX Everywhere** non-commercial license at <https://qnx.software/en/developers/get-started/qnx-everywhere>.
+3. Copy the **license key** from myQNX → *License Keys*. It is shown as `XXXX-XXXX-XXXX-XXXX-XXXX`.
+4. Download **QNX Software Center for Linux hosts** (`qnx-setup-<ver>-linux.run`). You do **not** need the macOS Software Center.
 
-## 2. One-time: Docker + QEMU
+## 2. One-time: Docker, QEMU, SDP
 
 ```bash
-open -a Docker               # start Docker Desktop (wait for "Engine running")
-brew install qemu            # QEMU runs natively on the Mac (TCG emulation for QNX)
-docker/qnx-build.sh qcc -V   # first run builds the container image (~2–5 min), then lists compilers
+open -a Docker      # Docker Desktop must show "Engine running"
+brew install qemu   # QEMU runs natively on the Mac (TCG emulation for QNX guests)
+
+# Install SDP 8.0 headlessly into the Docker volume "kervix-qnx-home".
+# Run this in YOUR terminal: it prompts for myQNX email, password and key inside the container.
+docker/install-sdp.sh ~/Downloads/qnx-setup-2.0.4-202501021438-linux.run
+
+docker/qnx-build.sh qcc -V   # should list the gcc_ntox86_64 / gcc_ntoaarch64le variants
 ```
 
-The container mounts `~/qnx800` read-only and `~/.qnx` for the license. Override with `QNX_SDP_DIR` / `QNX_LIC_DIR` if yours differ.
+Why a Docker volume instead of `~/qnx800` on the Mac:
+- macOS file systems are case-insensitive, and Linux SDP paths can collide.
+- Volume I/O is much faster for compiler header lookups.
+
+On **native x86_64 Linux** you can instead install the SDP normally and run `QNX_SDP_DIR=~/qnx800 docker/qnx-build.sh …`, or skip Docker entirely.
+
+Additional packages (QEMU image support, qcrypto, secpol tools, tracelogger, RPi4 target image) are added by spikes S0–S4 with the same command-line tool. The exact package ids are recorded here as they are confirmed.
 
 ## 3. Everyday
 
