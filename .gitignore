@@ -24,3 +24,7 @@ keys/
 !.vscode/extensions.json
 !.vscode/settings.json
 .idea/
+
+# local credentials (never commit)
+secrets.platforms.env
+*.env

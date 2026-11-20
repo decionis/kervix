@@ -9,7 +9,7 @@
 | D1 | 2026-11-20 | Product **Kervix**, paths `/dev/kervix/*`, positioned as "Decionis-protocol compatible" | Default | — |
 | D2 | 2026-11-20 | **3D on-screen car model (Must) + optional WebXR (Could)** | Decided | The 3D twin is promoted to Must. It is built procedurally in React Three Fiber from primitives (no external asset, no IP risk, ~1 day). WebXR is a toggle via `@react-three/xr`, added only after freeze criteria are green. |
 | D3 | 2026-11-20 | **Register upstream in AAC:** chain relation `follows` and the effect-type namespace `vehicle.*` | Decided | New work item U1 (04 §5): spec registry text, `@decionis/verify` registry update with tests, release ≥ 0.6.0. Kervix pins that version. Disclosed on Devpost as an upstream contribution made during the hackathon. |
-| D4 | 2026-11-20 | Live agent uses Claude `claude-opus-5-5` via your Anthropic API key. Scripted mode needs no key. | Default | — |
+| D4 | 2026-11-20 | Live agent uses Claude `claude-opus-5-5`. Scripted mode needs no key. | Decided (2026-11-21) | Runs on the Claude API or on **Claude on Microsoft Foundry** (the owner's credentials, from the git-ignored `secrets.platforms.env`). Server-side refusal fallbacks only on the Claude API. |
 | D5 | 2026-11-20 | Host stack is TypeScript (npm workspaces; see H4) | Default | — |
 | D6 | 2026-11-20 | License Apache-2.0 | Default | — |
 | D7 | 2026-11-20 | Enter the Best Codelab bonus | Default | Written incrementally from spike notes (~30 min/day) and finished Dec 11 |

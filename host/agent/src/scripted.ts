@@ -44,24 +44,29 @@ export type ScriptOptions = {
   log?: (s: string) => void;
 };
 
-export async function runScenario(s: Scenario, o: ScriptOptions): Promise<ScriptResult> {
-  const actor = o.actor ?? "agent:cabin-copilot";
-  const log = o.log ?? ((l) => console.log(l));
-  const note = (body: Record<string, unknown>) => o.api.note({ source: "agent", mode: "scripted", scenario: s.name, ...body });
-  const result: ScriptResult = { name: s.name, ok: true, checks: [] };
-
-  for (const st of s.setup ?? []) {
-    if (st.sim) await o.api.sim(st.sim);
+/** Set the scene through the world gateway and wait until the vehicle reports it. */
+export async function runSetup(api: BridgeApi, setup: NonNullable<Scenario["setup"]>): Promise<void> {
+  for (const st of setup) {
+    if (st.sim) await api.sim(st.sim);
     if (st.wait) {
       const t0 = Date.now();
       for (;;) {
-        const tel = (await o.api.state()).telemetry as Record<string, number> | undefined;
+        const tel = (await api.state()).telemetry as Record<string, number> | undefined;
         if (tel && tel[st.wait.field] === st.wait.equals) break;
         if (Date.now() - t0 > (st.wait.timeout_ms ?? 30000)) throw new Error(`setup: ${st.wait.field} never became ${st.wait.equals}`);
         await sleep(250);
       }
     }
   }
+}
+
+export async function runScenario(s: Scenario, o: ScriptOptions): Promise<ScriptResult> {
+  const actor = o.actor ?? "agent:cabin-copilot";
+  const log = o.log ?? ((l) => console.log(l));
+  const note = (body: Record<string, unknown>) => o.api.note({ source: "agent", mode: "scripted", scenario: s.name, ...body });
+  const result: ScriptResult = { name: s.name, ok: true, checks: [] };
+
+  await runSetup(o.api, s.setup ?? []);
   log(`== ${s.title}`);
   log(`driver> ${s.user}`);
   await note({ role: "user", text: s.user });

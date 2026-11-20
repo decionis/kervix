@@ -124,16 +124,20 @@ export async function verifyDossier({ files, wasm } = {}) {
   // 6 semantics -----------------------------------------------------------------
   const authorized = new Map(); // grant_id -> intent_hash
   const executed = new Set();
+  // escalation ids are per epoch: kervixd numbers them from 1 after every (re)start
   const escalated = new Set();
   const resolved = new Set();
+  let epoch = 0;
   for (const [i, c] of known.entries()) {
     const k = c.evidence.kervix, where = `capsule #${i + 1}`;
+    if (k.event === "epoch") epoch++;
+    const esc = `${epoch}:${k.escalation_id}`;
     if (k.event === "decision" && k.verdict === "ALLOW" && k.grant_id) authorized.set(k.grant_id, k.intent_hash);
-    if (k.event === "decision" && k.verdict === "ESCALATE") escalated.add(k.escalation_id);
+    if (k.event === "decision" && k.verdict === "ESCALATE") escalated.add(esc);
     if (k.event === "escalation_resolved") {
-      if (!escalated.has(k.escalation_id)) fail("semantics", where, `resolution of escalation #${k.escalation_id} without a prior escalation`);
-      else if (resolved.has(k.escalation_id)) fail("semantics", where, `escalation #${k.escalation_id} resolved twice`);
-      resolved.add(k.escalation_id);
+      if (!escalated.has(esc)) fail("semantics", where, `resolution of escalation #${k.escalation_id} without a prior escalation in this epoch`);
+      else if (resolved.has(esc)) fail("semantics", where, `escalation #${k.escalation_id} resolved twice`);
+      resolved.add(esc);
       if (k.verdict === "ALLOW" && k.grant_id) authorized.set(k.grant_id, k.intent_hash);
     }
     if (k.event === "effect") {
