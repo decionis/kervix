@@ -566,6 +566,28 @@ Wire format target↔host: newline-delimited JSON over TCP, one connection per r
 - **Scripted mode:** a JSON transcript (`scenarios/*.json`) of assistant turns and tool calls is replayed against the live target. Verdicts are real; only the LLM is recorded. It is used for the video, CI and judges without API keys.
 - **Safety framing:** the agent's system prompt does **not** contain the safety rules. This deliberately shows that safety does not depend on the model behaving.
 
+**Implemented (M3): `host/agent`** (`npm run agent -- script …` / `npm run agent -- live`)
+- **Live mode** (`src/live.ts`): a streaming manual loop on `client.beta.messages.stream` with:
+  - `claude-opus-5-5`, `thinking: {type: "adaptive", display: "summarized"}`, `output_config.effort` (`medium` by default, `KX_EFFORT`);
+  - `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`);
+  - strict tools with `eager_input_streaming`.
+- **Live-mode handling:**
+  - Every tool input is validated against its closed schema before anything reaches the bridge.
+  - `refusal`, `pause_turn` and `max_tokens` are handled.
+  - Parallel tool results go back in one user message.
+  - Assistant turns, thinking blocks included, are passed back unchanged.
+  - Thinking summaries, text and tool calls/results are mirrored to the dashboard feed (`/api/note`).
+- **Scripted mode** (`src/scripted.ts`, `scenarios/s{1,2,3}-*.json`): replays recorded assistant turns. Every proposal still goes to `kervixd`, and a verdict that differs from the recording fails the run. `--auto-approve MS` stands in for the driver in headless runs; it is recorded as the approver `hmi:auto-approve(scripted run)`.
+- **Tools:** one per catalog action, plus `get_vehicle_state` and `read_document`. `read_document` serves only an allowlist of names from `scenarios/docs/`, including the **synthetic poisoned bulletin** used in scene 2.
+- **Every action call is `propose` + `exec` + `await`:**
+  - ALLOW executes.
+  - ESCALATE waits for the driver.
+  - BLOCK (or a refused execution) returns `is_error: true` with `reason`, `explain`, and a `retry_hint` that is advice after the decision, never a rule.
+- **Tests:**
+  - CI: 6 tests against the fake target. A fake model client checks the request shape and the tool round trip, so CI needs no API key and no spend.
+  - QNX: `make target-agent` runs scenes 1–3 through the bridge (6/6). The session's dossier VERIFIED offline and names the agent and the approver.
+
+
 ---
 
 ## 15. Build, image and repository layout
