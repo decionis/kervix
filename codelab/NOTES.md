@@ -54,3 +54,12 @@ These notes are the gotchas found while building Kervix. Each one becomes a call
 - A client that keeps a server fd open (actuatord → kervixd) gets `EBADF`/`ESRCH` after the server restarts. Close, reopen once, and otherwise **fail closed**.
 - qcrypto inits lazily: the first DRBG request costs milliseconds. Warm it at start-up if first-request latency matters.
 
+## Deferred replies (kervixd AWAIT)
+- To keep a client waiting without a thread per waiter: store `ctp->rcvid`, return `_RESMGR_NOREPLY`, and later `MsgReply(rcvid, EOK, &reply, n)`. For a devctl, the reply is `struct _io_devctl_reply` (set `.nbytes`) followed by the data.
+- **Handle unblock.** Resource-manager channels use `_NTO_CHF_UNBLOCK`, so a REPLY-blocked client can't be interrupted until the server replies. Set `io_funcs.unblock`. The blocked client's rcvid is in the **pulse value** (`msg->value.sival_int`), not in `ctp->rcvid`. Then `MsgError(rcvid, EINTR)`.
+  - Without this, Ctrl-C or SIGTERM on a waiting client hangs until the reply arrives.
+  - We first compared against `ctp->rcvid` and it never matched.
+- A REPLY-blocked process also keeps QNX `sshd` from closing the session, even with `nohup` and all stdio redirected. Test waiter and resolver in the **same** session.
+- Shell trap: `cd dir && cmd & p=$!` backgrounds the whole `&&` list, so `$!` is a subshell and `kill $p` misses `cmd`. Write `cd dir; cmd & p=$!`.
+- Non-interactive shells start background jobs with SIGINT ignored. Use SIGTERM to test interruption.
+

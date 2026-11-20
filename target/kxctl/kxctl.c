@@ -15,8 +15,12 @@
  *        --forge          flip one bit of the grant MAC before executing
  *        --mutate k=v     execute a different parameter value than was granted
  *        --save-grant F   write grant+command to F (for `kxctl execute` from another process)
+ *        --await          on ESCALATE, block until the driver resolves it (or it times out)
  *   kxctl execute --grant F         present a saved grant (a DIFFERENT process: binding test)
  *   kxctl stats                     authority counters + PROPOSE latency histogram
+ *   kxctl escalations               pending driver decisions (the HMI's view)
+ *   kxctl approve <id> [--as NAME]  driver approves (re-evaluated on live telemetry first)
+ *   kxctl deny <id> [--as NAME]     driver denies
  *
  * Exit status: 0 ok/ALLOW/executed, 1 check failed or execution refused,
  *              2 usage/IO error, 3 ESCALATE, 4 BLOCK.
@@ -237,7 +241,7 @@ static int report_exec(const char *label, uint16_t r) {
 
 static int cmd_propose(int argc, char **argv) {
     const char *actor = "agent:kxctl", *sim = NULL, *save = NULL, *mutate = NULL;
-    int exec = 0, replay = 0, forge = 0;
+    int exec = 0, replay = 0, forge = 0, await_esc = 0;
     long delay_ms = 0;
     int i = 0;
     for (; i < argc && strncmp(argv[i], "--", 2) == 0; i++) {
@@ -249,6 +253,7 @@ static int cmd_propose(int argc, char **argv) {
         else if (!strcmp(argv[i], "--sim") && i + 1 < argc) { sim = argv[++i]; exec = 1; }
         else if (!strcmp(argv[i], "--mutate") && i + 1 < argc) { mutate = argv[++i]; exec = 1; }
         else if (!strcmp(argv[i], "--save-grant") && i + 1 < argc) save = argv[++i];
+        else if (!strcmp(argv[i], "--await")) await_esc = 1;
         else { fprintf(stderr, "kxctl: unknown option %s\n", argv[i]); return 2; }
     }
     if (i >= argc) return usage();
@@ -265,8 +270,7 @@ static int cmd_propose(int argc, char **argv) {
     uint64_t t0 = now_ns();
     int rc = devctl(fd, KX_DCMD_PROPOSE, &u, sizeof u.d, NULL);
     uint64_t rtt = now_ns() - t0;
-    close(fd);
-    if (rc != EOK) { fprintf(stderr, "kxctl: PROPOSE: %s\n", strerror(rc)); return 2; }
+    if (rc != EOK) { close(fd); fprintf(stderr, "kxctl: PROPOSE: %s\n", strerror(rc)); return 2; }
     kx_decision_t d = u.d;
     const char *v = d.verdict == KX_VERDICT_ALLOW ? "ALLOW" : d.verdict == KX_VERDICT_ESCALATE ? "ESCALATE" : "BLOCK";
     char ih[65], gh[33];
@@ -276,6 +280,20 @@ static int cmd_propose(int argc, char **argv) {
     printf("         intent sha256:%.16s…  telemetry seq %llu  eval %.1f us  round-trip %.1f us\n", ih,
            (unsigned long long)d.telemetry_seq, d.eval_ns / 1e3, rtt / 1e3);
     if (d.verdict == KX_VERDICT_ESCALATE) printf("         escalation #%u awaiting the driver\n", d.escalation_id);
+    if (d.verdict == KX_VERDICT_ESCALATE && await_esc) {
+        union { kx_await_req_t aw; kx_decision_t d; } w;
+        memset(&w, 0, sizeof w);
+        w.aw.escalation_id = d.escalation_id;
+        uint64_t tw = now_ns();
+        rc = devctl(fd, KX_DCMD_AWAIT, &w, sizeof w.d, NULL); /* REPLY-blocked until resolved */
+        if (rc != EOK) { close(fd); fprintf(stderr, "kxctl: AWAIT: %s\n", strerror(rc)); return 2; }
+        d = w.d;
+        v = d.verdict == KX_VERDICT_ALLOW ? "ALLOW" : d.verdict == KX_VERDICT_ESCALATE ? "ESCALATE" : "BLOCK";
+        printf("%-8s escalation #%u resolved after %.1f s  rule=%s  reason=%s\n", v, d.escalation_id,
+               (double)(now_ns() - tw) / 1e9, d.rule_id[0] ? d.rule_id : "-", rname(d.reason));
+        printf("         %s\n", rtext(d.reason));
+    }
+    close(fd);
     if (d.verdict != KX_VERDICT_ALLOW) return d.verdict == KX_VERDICT_ESCALATE ? 3 : 4;
 
     hexs(d.grant.grant_id, 16, gh);
@@ -324,6 +342,55 @@ static int cmd_execute(int argc, char **argv) {
     return report_exec("execute", execute_req(&rq.grant, &rq.command));
 }
 
+static int cmd_await(const char *id) {
+    int fd = open(KX_PATH_INTENT, O_RDWR);
+    if (fd == -1) { fprintf(stderr, "kxctl: %s: %s\n", KX_PATH_INTENT, strerror(errno)); return 2; }
+    union { kx_await_req_t aw; kx_decision_t d; } w;
+    memset(&w, 0, sizeof w);
+    w.aw.escalation_id = (uint32_t)strtoul(id[0] == '#' ? id + 1 : id, NULL, 10);
+    int rc = devctl(fd, KX_DCMD_AWAIT, &w, sizeof w.d, NULL);
+    close(fd);
+    if (rc != EOK) {
+        fprintf(stderr, "kxctl: await #%u: %s\n", w.aw.escalation_id,
+                rc == EPERM ? "only the proposing process may await its escalation" : strerror(rc));
+        return 1;
+    }
+    printf("%s escalation #%u reason=%s\n", w.d.verdict == KX_VERDICT_ALLOW ? "ALLOW" : "BLOCK", w.d.escalation_id, rname(w.d.reason));
+    return 0;
+}
+
+static int cmd_escalations(void) {
+    int fd = open(KX_PATH_ESCALATIONS, O_RDONLY);
+    if (fd == -1) { fprintf(stderr, "kxctl: %s: %s\n", KX_PATH_ESCALATIONS, strerror(errno)); return 2; }
+    char buf[4096];
+    ssize_t n = read(fd, buf, sizeof buf - 1);
+    close(fd);
+    if (n < 0) return 2;
+    buf[n] = '\0';
+    fputs(buf, stdout);
+    return 0;
+}
+
+static int cmd_resolve(int argc, char **argv, int approve) {
+    if (argc != 1 && !(argc == 3 && !strcmp(argv[1], "--as"))) return usage();
+    kx_resolve_req_t rr;
+    memset(&rr, 0, sizeof rr);
+    rr.escalation_id = (uint32_t)strtoul(argv[0][0] == '#' ? argv[0] + 1 : argv[0], NULL, 10);
+    rr.approve = (uint8_t)approve;
+    snprintf(rr.approver, sizeof rr.approver, "%s", argc == 3 ? argv[2] : "hmi:kxctl");
+    int fd = open(KX_PATH_ESCALATIONS, O_RDWR);
+    if (fd == -1) { fprintf(stderr, "kxctl: %s: %s\n", KX_PATH_ESCALATIONS, strerror(errno)); return 2; }
+    int rc = devctl(fd, KX_DCMD_ESC_RESOLVE, &rr, sizeof rr, NULL);
+    close(fd);
+    if (rc != EOK) {
+        fprintf(stderr, "kxctl: escalation #%u: %s\n", rr.escalation_id,
+                rc == ENOENT ? "no such escalation" : rc == EALREADY ? "already resolved" : strerror(rc));
+        return 1;
+    }
+    printf("escalation #%u %s by %s\n", rr.escalation_id, approve ? "APPROVED" : "DENIED", rr.approver);
+    return 0;
+}
+
 static int cmd_stats(void) {
     int fd = open(KX_PATH_STATS, O_RDONLY);
     if (fd == -1) { fprintf(stderr, "kxctl: %s: %s\n", KX_PATH_STATS, strerror(errno)); return 2; }
@@ -339,9 +406,10 @@ static int cmd_stats(void) {
 static int usage(void) {
     fprintf(stderr, "usage:\n  kxctl telemetry [--watch <seconds>]\n  kxctl sim <command...>   (kxctl sim help)\n"
                     "  kxctl sim-apply <action> [key=value...]\n"
-                    "  kxctl propose [--exec|--replay|--forge|--delay-ms N|--sim CMD|--mutate k=v|--save-grant F|--actor ID]\n"
+                    "  kxctl propose [--exec|--await|--replay|--forge|--delay-ms N|--sim CMD|--mutate k=v|--save-grant F|--actor ID]\n"
                     "                <action> [key=value...]\n"
-                    "  kxctl execute --grant F\n  kxctl stats\n");
+                    "  kxctl execute --grant F\n  kxctl stats\n"
+                    "  kxctl escalations | approve <id> [--as NAME] | deny <id> [--as NAME]\n");
     return 2;
 }
 
@@ -358,5 +426,9 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[1], "propose") && argc >= 3) return cmd_propose(argc - 2, argv + 2);
     if (!strcmp(argv[1], "execute")) return cmd_execute(argc - 2, argv + 2);
     if (!strcmp(argv[1], "stats")) return cmd_stats();
+    if (!strcmp(argv[1], "escalations")) return cmd_escalations();
+    if (!strcmp(argv[1], "await") && argc == 3) return cmd_await(argv[2]);
+    if (!strcmp(argv[1], "approve") && argc >= 3) return cmd_resolve(argc - 2, argv + 2, 1);
+    if (!strcmp(argv[1], "deny") && argc >= 3) return cmd_resolve(argc - 2, argv + 2, 0);
     return usage();
 }

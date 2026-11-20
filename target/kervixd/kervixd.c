@@ -5,6 +5,8 @@
  *   agent    /dev/kervix/intent  PROPOSE -> kx_decision_t (+ single-use grant on ALLOW)
  *            /dev/kervix/stats   text counters + PROPOSE latency histogram
  *   actuator /dev/kervix/redeem  REDEEM (grant -> OK | GRANT_*), EFFECT (outcome)
+ *   hmi      /dev/kervix/escalations  LIST / SUBSCRIBE / RESOLVE (driver approvals)
+ *   agent    AWAIT(escalation id): deferred reply until the driver resolves or it times out
  *
  * Every decision is computed by libkxcore's pure kx_eval() on a seqlock
  * snapshot of vsimd telemetry (mapped READ-ONLY). Caller identity comes from
@@ -55,8 +57,29 @@ static struct {
     /* stats */
     uint64_t            proposals, by_verdict[4], by_reason[256], redeem_ok, redeem_fail[256];
     uint64_t            effects_ok, effects_fail, reaped;
+    uint64_t            esc_created, esc_approved, esc_denied, esc_expired, esc_reblocked;
     uint64_t            hist[HIST_BUCKETS], lat_min_ns, lat_max_ns;
 } K = { .lock = PTHREAD_MUTEX_INITIALIZER, .lat_min_ns = UINT64_MAX };
+
+/* ---- escalations (pending human decisions) ---- */
+enum { ESC_FREE = 0, ESC_PENDING, ESC_RESOLVED };
+typedef struct {
+    uint8_t       state;
+    uint32_t      id;
+    kx_intent_t   in;
+    kx_client_t   proposer;
+    uint8_t       intent_hash[32];
+    int16_t       rule_index;
+    uint16_t      reason;           /* why a human is needed */
+    uint64_t      deadline_ns, forget_ns;
+    int           waiter;           /* rcvid of a REPLY-blocked AWAIT, 0 = none */
+    kx_decision_t outcome;          /* valid when RESOLVED */
+} esc_t;
+static esc_t g_esc[KX_MAX_ESCALATIONS];
+
+typedef struct { int active; int rcvid; void *ocb; struct sigevent ev; } sub_t;
+#define MAX_HMI_SUBS 4
+static sub_t g_hmi_subs[MAX_HMI_SUBS];
 
 typedef struct {
     const char            *path;
@@ -65,13 +88,14 @@ typedef struct {
     resmgr_io_funcs_t      io;
     iofunc_attr_t          attr;
 } node_t;
-enum { CH_AGENT = 0, CH_ACT, CH__COUNT };
-enum { N_INTENT = 0, N_STATS, N_REDEEM, N__COUNT };
+enum { CH_AGENT = 0, CH_ACT, CH_HMI, CH__COUNT };
+enum { N_INTENT = 0, N_STATS, N_REDEEM, N_ESC, N__COUNT };
 static dispatch_t *g_disp[CH__COUNT];
 static node_t g_nodes[N__COUNT] = {
     { .path = KX_PATH_INTENT, .chan = CH_AGENT },
     { .path = KX_PATH_STATS, .chan = CH_AGENT },
     { .path = KX_PATH_REDEEM, .chan = CH_ACT },
+    { .path = KX_PATH_ESCALATIONS, .chan = CH_HMI },
 };
 
 static uint64_t mono_ns(void) {
@@ -117,6 +141,78 @@ static void record_latency(uint64_t ns) {
     if (ns > K.lat_max_ns) K.lat_max_ns = ns;
 }
 
+static esc_t *esc_find(uint32_t id) {
+    for (int i = 0; i < KX_MAX_ESCALATIONS; i++) if (g_esc[i].state != ESC_FREE && g_esc[i].id == id) return &g_esc[i];
+    return NULL;
+}
+
+/* Doorbell to the driver's HMI. Called with K.lock held. */
+static void ring_hmi(void) {
+    for (int i = 0; i < MAX_HMI_SUBS; i++) {
+        if (g_hmi_subs[i].active && MsgDeliverEvent(g_hmi_subs[i].rcvid, &g_hmi_subs[i].ev) == -1) g_hmi_subs[i].active = 0;
+    }
+}
+
+/* Deferred reply to an AWAIT devctl. */
+static void reply_decision(int rcvid, const kx_decision_t *d) {
+    struct { struct _io_devctl_reply o; kx_decision_t d; } r;
+    memset(&r, 0, sizeof r);
+    r.o.nbytes = sizeof r.d;
+    r.d = *d;
+    MsgReply(rcvid, EOK, &r, sizeof r);
+}
+
+/* Resolve a pending escalation (K.lock held). approve: 1 approve, 0 deny, -1 timeout.
+ * Approval never grants blindly: the policy is re-evaluated on live telemetry. */
+static void esc_resolve(esc_t *e, int approve, const char *approver) {
+    kx_decision_t *d = &e->outcome;
+    memset(d, 0, sizeof *d);
+    d->abi = KX_ABI_VERSION;
+    d->escalation_id = e->id;
+    d->rule_index = -1;
+    memcpy(d->intent_hash, e->intent_hash, 32);
+    memcpy(d->policy_hash, K.policy.hash, 32);
+    uint64_t now = mono_ns();
+    if (approve < 0) {
+        d->verdict = KX_VERDICT_BLOCK; d->reason = KX_R_ESCALATION_TIMEOUT; K.esc_expired++;
+    } else if (approve == 0) {
+        d->verdict = KX_VERDICT_BLOCK; d->reason = KX_R_HUMAN_DENIED; K.esc_denied++;
+    } else {
+        kx_telemetry_t tel;
+        telemetry(&tel);
+        kx_eval_env_t env = { now, realtime_ms(), K.max_age_ns, 1 };
+        kx_eval_result_t r;
+        kx_eval(&K.policy, &e->in, &tel, &env, &r);
+        d->telemetry_seq = tel.seq;
+        int still_ok = r.verdict == KX_VERDICT_ALLOW ||
+                       (r.verdict == KX_VERDICT_ESCALATE && r.rule_index == e->rule_index);
+        if (!still_ok) {               /* the situation changed while the driver decided */
+            d->verdict = KX_VERDICT_BLOCK; d->reason = r.reason; d->gate = r.gate; d->rule_index = r.rule_index;
+            K.esc_reblocked++;
+        } else {
+            uint8_t gid[16];
+            uint16_t gr = rng_bytes(gid, sizeof gid) == 0
+                              ? kx_grant_issue(&K.grants, &e->in, e->intent_hash, K.policy.hash, r.rule_index,
+                                               r.grant_ttl_ms, e->proposer, gid, now, &d->grant)
+                              : KX_R_LEDGER_PRESSURE;
+            d->verdict = gr == KX_R_OK ? KX_VERDICT_ALLOW : KX_VERDICT_BLOCK;
+            d->reason = gr == KX_R_OK ? KX_R_HUMAN_APPROVED : gr;
+            d->rule_index = r.rule_index;
+            K.esc_approved++;
+        }
+    }
+    if (d->rule_index >= 0) memcpy(d->rule_id, K.policy.rules[d->rule_index].id, KX_RULE_ID_LEN);
+    K.by_verdict[d->verdict & 3]++;
+    K.by_reason[d->reason & 0xff]++;
+    e->state = ESC_RESOLVED;
+    e->forget_ns = now + 60ull * 1000000000ull;
+    if (e->waiter) { reply_decision(e->waiter, d); e->waiter = 0; }
+    if (K.verbose) printf("kervixd: escalation #%u %s by %s -> %s\n", e->id,
+                          approve < 0 ? "timed out" : approve ? "approved" : "denied", approver ? approver : "-",
+                          reason_name(d->reason));
+    ring_hmi();
+}
+
 static void propose(resmgr_context_t *ctp, const kx_intent_t *in, kx_decision_t *d) {
     uint64_t c0 = ClockCycles();
     kx_client_t client = { ctp->info.type_id, ctp->info.pid };
@@ -144,7 +240,25 @@ static void propose(resmgr_context_t *ctp, const kx_intent_t *in, kx_decision_t 
                           : KX_R_LEDGER_PRESSURE; /* no CSPRNG, no grant */
         if (gr != KX_R_OK) { r.verdict = KX_VERDICT_BLOCK; r.reason = gr; }
     } else if (r.verdict == KX_VERDICT_ESCALATE) {
-        d->escalation_id = ++K.next_escalation; /* human-resolution queue: escalation milestone */
+        esc_t *e = NULL;
+        for (int i = 0; i < KX_MAX_ESCALATIONS && e == NULL; i++) if (g_esc[i].state == ESC_FREE) e = &g_esc[i];
+        if (e == NULL) {
+            r.verdict = KX_VERDICT_BLOCK;
+            r.reason = KX_R_ESCALATION_QUEUE_FULL;
+        } else {
+            memset(e, 0, sizeof *e);
+            e->state = ESC_PENDING;
+            e->id = ++K.next_escalation;
+            e->in = *in;
+            e->proposer = client;
+            memcpy(e->intent_hash, d->intent_hash, 32);
+            e->rule_index = r.rule_index;
+            e->reason = r.reason;
+            e->deadline_ns = now + (uint64_t)r.esc_timeout_ms * 1000000ull;
+            d->escalation_id = e->id;
+            K.esc_created++;
+            ring_hmi();
+        }
     }
     d->verdict = r.verdict;
     d->gate = r.gate;
@@ -190,6 +304,89 @@ static int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, void *ocb_v) {
         msg->o.nbytes = sizeof d;
         return _RESMGR_PTR(ctp, &msg->o, sizeof msg->o + sizeof d);
     }
+    case KX_DCMD_AWAIT: {
+        if (node != &g_nodes[N_INTENT]) return ENOTTY;
+        kx_await_req_t aw;
+        memcpy(&aw, data, sizeof aw);
+        pthread_mutex_lock(&K.lock);
+        esc_t *e = esc_find(aw.escalation_id);
+        int rc = EOK;
+        if (e == NULL) rc = ENOENT;
+        else if (e->proposer.pid != ctp->info.pid || e->proposer.type_id != ctp->info.type_id) rc = EPERM; /* only the proposer */
+        else if (e->state == ESC_PENDING && e->waiter) rc = EBUSY;
+        if (rc != EOK) { pthread_mutex_unlock(&K.lock); return rc; }
+        if (e->state == ESC_RESOLVED) {
+            kx_decision_t d = e->outcome;
+            pthread_mutex_unlock(&K.lock);
+            memcpy(data, &d, sizeof d);
+            memset(&msg->o, 0, sizeof msg->o);
+            msg->o.nbytes = sizeof d;
+            return _RESMGR_PTR(ctp, &msg->o, sizeof msg->o + sizeof d);
+        }
+        e->waiter = ctp->rcvid;              /* stays REPLY-blocked in the kernel */
+        pthread_mutex_unlock(&K.lock);
+        return _RESMGR_NOREPLY;
+    }
+    case KX_DCMD_ESC_LIST: {
+        if (node != &g_nodes[N_ESC]) return ENOTTY;
+        static kx_esc_list_t L;
+        memset(&L, 0, sizeof L);
+        pthread_mutex_lock(&K.lock);
+        uint64_t now = mono_ns();
+        for (int i = 0; i < KX_MAX_ESCALATIONS && L.n < KX_ESC_LIST_MAX; i++) {
+            esc_t *e = &g_esc[i];
+            if (e->state != ESC_PENDING) continue;
+            kx_esc_info_t *x = &L.e[L.n++];
+            x->escalation_id = e->id;
+            x->reason = e->reason;
+            x->remaining_ms = e->deadline_ns > now ? (int32_t)((e->deadline_ns - now) / 1000000u) : 0;
+            x->proposer_pid = e->proposer.pid;
+            memcpy(x->rule_id, K.policy.rules[e->rule_index].id, KX_RULE_ID_LEN);
+            x->intent = e->in;
+        }
+        pthread_mutex_unlock(&K.lock);
+        memcpy(data, &L, sizeof L);
+        memset(&msg->o, 0, sizeof msg->o);
+        msg->o.nbytes = sizeof L;
+        return _RESMGR_PTR(ctp, &msg->o, sizeof msg->o + sizeof L);
+    }
+    case KX_DCMD_ESC_RESOLVE: {
+        if (node != &g_nodes[N_ESC]) return ENOTTY;
+        kx_resolve_req_t rr;
+        memcpy(&rr, data, sizeof rr);
+        rr.approver[sizeof rr.approver - 1] = '\0';
+        pthread_mutex_lock(&K.lock);
+        esc_t *e = esc_find(rr.escalation_id);
+        int rc = e == NULL ? ENOENT : e->state != ESC_PENDING ? EALREADY : EOK;
+        if (rc == EOK) {
+            char who[64];
+            snprintf(who, sizeof who, "%s(pid %d)", rr.approver[0] ? rr.approver : "hmi", ctp->info.pid);
+            esc_resolve(e, rr.approve ? 1 : 0, who);
+        }
+        pthread_mutex_unlock(&K.lock);
+        if (rc != EOK) return rc;
+        memset(&msg->o, 0, sizeof msg->o);
+        return _RESMGR_PTR(ctp, &msg->o, sizeof msg->o);
+    }
+    case KX_DCMD_ESC_SUBSCRIBE: {
+        if (node != &g_nodes[N_ESC]) return ENOTTY;
+        int slot = -1;
+        pthread_mutex_lock(&K.lock);
+        for (int i = 0; i < MAX_HMI_SUBS; i++) {
+            if (g_hmi_subs[i].active && g_hmi_subs[i].ocb == ocb) { slot = i; break; }
+            if (!g_hmi_subs[i].active && slot < 0) slot = i;
+        }
+        if (slot >= 0) {
+            g_hmi_subs[slot].active = 1;
+            g_hmi_subs[slot].rcvid = ctp->rcvid;
+            g_hmi_subs[slot].ocb = ocb;
+            memcpy(&g_hmi_subs[slot].ev, data, sizeof(struct sigevent));
+        }
+        pthread_mutex_unlock(&K.lock);
+        if (slot < 0) return EBUSY;
+        memset(&msg->o, 0, sizeof msg->o);
+        return _RESMGR_PTR(ctp, &msg->o, sizeof msg->o);
+    }
     case KX_DCMD_REDEEM: {
         if (node != &g_nodes[N_REDEEM]) return ENOTTY;
         kx_redeem_req_t rq;
@@ -228,12 +425,33 @@ static int io_read(resmgr_context_t *ctp, io_read_t *msg, void *ocb_v) {
     int st = iofunc_read_verify(ctp, msg, ocb, NULL);
     if (st != EOK) return st;
     if ((msg->i.xtype & _IO_XTYPE_MASK) != _IO_XTYPE_NONE) return ENOSYS;
-    if (ocb->attr != &g_nodes[N_STATS].attr) return EBADF;
+    if (ocb->attr != &g_nodes[N_STATS].attr && ocb->attr != &g_nodes[N_ESC].attr) return EBADF;
     if (ocb->offset > 0) { _IO_SET_READ_NBYTES(ctp, 0); return _RESMGR_NPARTS(0); }
 
     static char buf[4096];
     size_t o = 0;
 #define OUT(...) do { if (o < sizeof buf) o += (size_t)snprintf(buf + o, sizeof buf - o, __VA_ARGS__); } while (0)
+    if (ocb->attr == &g_nodes[N_ESC].attr) {
+        pthread_mutex_lock(&K.lock);
+        uint64_t now = mono_ns();
+        int n = 0;
+        for (int i = 0; i < KX_MAX_ESCALATIONS; i++) {
+            esc_t *e = &g_esc[i];
+            if (e->state != ESC_PENDING) continue;
+            const kx_action_spec_t *a = kx_catalog_action(e->in.action);
+            OUT("#%u  %-26s %-22s rule=%s  actor=%s  pid=%d  %.1fs left\n", e->id, a ? a->name : "?",
+                reason_name(e->reason), K.policy.rules[e->rule_index].id, e->in.actor_id, e->proposer.pid,
+                e->deadline_ns > now ? (double)(e->deadline_ns - now) / 1e9 : 0.0);
+            n++;
+        }
+        if (n == 0) OUT("(no pending escalations)\n");
+        pthread_mutex_unlock(&K.lock);
+        size_t m = o < msg->i.nbytes ? o : msg->i.nbytes;
+        ocb->offset += (off_t)m;
+        _IO_SET_READ_NBYTES(ctp, (long)m);
+        MsgReply(ctp->rcvid, (long)m, buf, m);
+        return _RESMGR_NOREPLY;
+    }
     kx_telemetry_t tel;
     telemetry(&tel);
     pthread_mutex_lock(&K.lock);
@@ -249,6 +467,8 @@ static int io_read(resmgr_context_t *ctp, io_read_t *msg, void *ocb_v) {
     OUT("grants outstanding %u  redeemed %" PRIu64 "  expired(reaped) %" PRIu64 "\n", K.grants.outstanding, K.redeem_ok, K.reaped);
     for (int r = 0; r < 256; r++) if (K.redeem_fail[r]) OUT("  refused %-23s %" PRIu64 "\n", reason_name((uint16_t)r), K.redeem_fail[r]);
     OUT("effects confirmed %" PRIu64 "  failed %" PRIu64 "\n", K.effects_ok, K.effects_fail);
+    OUT("escalations created %" PRIu64 "  approved %" PRIu64 "  denied %" PRIu64 "  timed-out %" PRIu64
+        "  re-blocked-on-approval %" PRIu64 "\n", K.esc_created, K.esc_approved, K.esc_denied, K.esc_expired, K.esc_reblocked);
     if (K.proposals) {
         OUT("PROPOSE latency (in-server): min %.1f us  max %.1f us\n", (double)K.lat_min_ns / 1e3, (double)K.lat_max_ns / 1e3);
         uint64_t total = 0, acc = 0;
@@ -272,6 +492,36 @@ static int io_read(resmgr_context_t *ctp, io_read_t *msg, void *ocb_v) {
     return _RESMGR_NOREPLY;
 }
 
+/* A client REPLY-blocked in AWAIT asked to unblock (signal, timeout, kill):
+ * the kernel cannot release it until we reply, so release it now. The
+ * escalation stays pending; the agent may AWAIT again. Without this, a
+ * waiting gateway could not be stopped until the driver answered. */
+static int io_unblock(resmgr_context_t *ctp, io_pulse_t *msg, void *ocb_v) {
+    int rcvid = msg->value.sival_int;   /* _PULSE_CODE_UNBLOCK: value = the blocked client's rcvid */
+    pthread_mutex_lock(&K.lock);
+    int found = 0;
+    for (int i = 0; i < KX_MAX_ESCALATIONS; i++) {
+        if (g_esc[i].state == ESC_PENDING && g_esc[i].waiter == rcvid) {
+            g_esc[i].waiter = 0;
+            found = 1;
+        }
+    }
+    pthread_mutex_unlock(&K.lock);
+    if (K.verbose) printf("kervixd: unblock request for rcvid %d (%s)\n", rcvid, found ? "released AWAIT" : "not ours");
+    if (found) {
+        MsgError(rcvid, EINTR);
+        return _RESMGR_NOREPLY;
+    }
+    return iofunc_unblock_default(ctp, msg, ocb_v);
+}
+
+static int io_close_ocb(resmgr_context_t *ctp, void *reserved, void *ocb_v) {
+    pthread_mutex_lock(&K.lock);
+    for (int i = 0; i < MAX_HMI_SUBS; i++) if (g_hmi_subs[i].ocb == ocb_v) g_hmi_subs[i].active = 0;
+    pthread_mutex_unlock(&K.lock);
+    return iofunc_close_ocb_default(ctp, reserved, ocb_v);
+}
+
 /* ------------------------------------------------------------ threads */
 
 static void *serve(void *arg) {
@@ -289,8 +539,14 @@ static void *reaper(void *arg) {
     for (;;) {
         usleep(20000);
         pthread_mutex_lock(&K.lock);
-        uint32_t n = kx_grant_reap(&K.grants, mono_ns(), NULL, 0); /* "expired" capsules arrive in M2 */
+        uint64_t now = mono_ns();
+        uint32_t n = kx_grant_reap(&K.grants, now, NULL, 0); /* "expired" capsules arrive in M2 */
         K.reaped += n;
+        for (int i = 0; i < KX_MAX_ESCALATIONS; i++) {
+            esc_t *e = &g_esc[i];
+            if (e->state == ESC_PENDING && now > e->deadline_ns) esc_resolve(e, -1, NULL); /* fail closed */
+            else if (e->state == ESC_RESOLVED && now > e->forget_ns) e->state = ESC_FREE;
+        }
         pthread_mutex_unlock(&K.lock);
         if (n && K.verbose) printf("kervixd: %u grant(s) expired unused\n", n);
     }
@@ -338,11 +594,13 @@ int main(int argc, char **argv) {
         iofunc_func_init(_RESMGR_CONNECT_NFUNCS, &n->cf, _RESMGR_IO_NFUNCS, &n->io);
         n->io.devctl = io_devctl;
         n->io.read = io_read;
+        n->io.close_ocb = io_close_ocb;
+        n->io.unblock = io_unblock;
         iofunc_attr_init(&n->attr, S_IFCHR | (i == N_STATS ? 0444 : 0666), NULL, NULL);
         resmgr_attr_t ra2;
         memset(&ra2, 0, sizeof ra2);
         ra2.nparts_max = 1;
-        ra2.msg_max_size = 4096;
+        ra2.msg_max_size = 8192; /* ESC_LIST carries up to 16 intents */
         if (secpol_resmgr_attach(NULL, g_disp[n->chan], &ra2, n->path, _FTYPE_ANY, 0, &n->cf, &n->io, &n->attr, NULL) == -1) {
             fprintf(stderr, "kervixd: attach %s: %s\n", n->path, strerror(errno));
             return 1;
