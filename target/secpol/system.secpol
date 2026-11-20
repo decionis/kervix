@@ -3,7 +3,7 @@
 # Rules for the stock QNX services and the admin shell; Kervix rules live in kervix.secpol.
 # Regenerate after changing the image or what the tests do; review every diff.
 
-# This represents policy updates for policy id a5d362ce.  It contains the rules
+# This represents policy updates for policy id 8e7c6cba.  It contains the rules
 # representing the result of actions that would have failed with the existing
 # policy.
 
@@ -162,10 +162,10 @@ allow dhcpcd_t self:ability {
     pgrp
     map_fixed
     channel_connect:random_t,slogger_t,devb_t,pipe_t,io_sock_t
+    network/jailroot
     network/privport
     network/rawsocket
     network/admin
-    network/jailroot
 };
 allow dhcpcd_t self:ability {
     setuid:38
@@ -408,8 +408,8 @@ allow sshd_t self:ability {
     chroot:0
     channel_connect:random_t,slogger_t,devb_t,pipe_t,io_sock_t
     settypeid:sshd_t__privsep,user_root_t
-    network/privport
     network/jailroot
+    network/privport
 };
 allow sshd_t self:ability {
     gain_priv:setuid,setgid
@@ -440,7 +440,7 @@ allow user_root_t self:ability {
     prot_exec
     pgrp
     map_fixed
-    xprocess_query:20-22,24-25,29-30,33-34,37-38,43-44,47-48
+    xprocess_query:20-22,24-25,29-30,33-34,37-38,43-44,47-48,400-403
     channel_connect:slogger_t,devb_t,pipe_t
     settypeid:agentgw_t,hmigw_t,operator_t
 };

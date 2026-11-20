@@ -607,8 +607,11 @@ int main(int argc, char **argv) {
     int policy;
     pthread_getschedparam(pthread_self(), &policy, &sp);
     G.prio = sp.sched_priority;
+    /* the name lookup needs read access to the policy, which a non-root process
+     * lacks on a --secpol=secure image: fall back to the kernel's type id */
     const char *tn = secpol_get_type_name(NULL, secpol_type_id());
-    snprintf(G.type_name, sizeof G.type_name, "%s", tn ? tn : "");
+    if (tn && tn[0]) snprintf(G.type_name, sizeof G.type_name, "%s", tn);
+    else snprintf(G.type_name, sizeof G.type_name, "type_id:%d", (int)secpol_type_id());
 
     int s = socket(AF_INET, SOCK_STREAM, 0);
     int one = 1;
