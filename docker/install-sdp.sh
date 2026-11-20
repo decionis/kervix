@@ -6,8 +6,10 @@
 #   docker/install-sdp.sh ~/Downloads/qnx-setup-2.0.4-202501021438-linux.run
 #
 # You are prompted (inside the container) for your myQNX email, password and
-# license key. They are never written to disk, shell history, `docker inspect`
-# or logs. Run this in your own terminal: it needs an interactive TTY.
+# license key. Password/key entry is hidden; myQNX authentication is passed via
+# a temporary options file in container RAM, removed on exit, rather than
+# logged command-line arguments or Docker configuration. QNX stores activation
+# data in the named volume. Run this in your own terminal: it needs a TTY.
 #
 # Why a named volume and not ~/qnx800 on the Mac: macOS filesystems are
 # case-insensitive (Linux SDP paths can collide), and volume I/O is much
