@@ -7,6 +7,7 @@
 //   kxpolicy verify <p.kxp> --trust trust.txt            the vehicle's acceptance check, on the host
 //   kxpolicy test <fixture.yaml...>                       fixtures evaluated by the vehicle's C core (WASM)
 import fs from "node:fs";
+import path from "node:path";
 
 import { addSignature, bodyDigest, check, decode, encode, generateKey, loadPrivateKey, parseTrust, trustLine, type Role } from "./bundle.ts";
 import { compile, PolicyError } from "./compile.ts";
@@ -41,7 +42,7 @@ try {
     if (role !== "author" && role !== "approver") die("--role author|approver");
     const k = generateKey();
     fs.writeFileSync(`${name}.key`, k.privatePem, { mode: 0o600 });
-    console.log(`wrote ${name}.key (keep it secret)\ntrust line for the vehicle:\n  ${trustLine(role, k.pub, name)}`);
+    console.log(`wrote ${name}.key (keep it secret)\ntrust line for the vehicle:\n  ${trustLine(role, k.pub, path.basename(name))}`);
   } else if (cmd === "author") {
     const file = args[0] ?? die("author <policy.yaml> --key a.key -o p.kxp");
     const key = opt("--key") ?? die("--key"), out = opt("-o") ?? die("-o");

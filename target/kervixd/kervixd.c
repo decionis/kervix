@@ -26,6 +26,7 @@
 #include <inttypes.h>
 #include <pthread.h>
 #include <qcrypto/qcrypto.h>
+#include <qcrypto/qcrypto_keys.h>
 #include <secpol/secpol.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,15 +35,18 @@
 #include <sys/iofunc.h>
 #include <sys/mman.h>
 #include <sys/neutrino.h>
+#include <sys/stat.h>
 #include <sys/syspage.h>
 #include <time.h>
 #include <unistd.h>
 
+#include "kervix/bundle.h"
 #include "kervix/grant.h"
 #include "kervix/intent.h"
 #include "kervix/kervix_abi.h"
 #include "kervix/policy.h"
 #include "kervix/seqlock.h"
+#include "kervix/sha256.h"
 #include "kxledger.h"
 
 #define HIST_BUCKETS 20 /* log2 microseconds: [0,1) [1,2) [2,4) ... */
@@ -95,14 +99,15 @@ typedef struct {
     resmgr_io_funcs_t      io;
     iofunc_attr_t          attr;
 } node_t;
-enum { CH_AGENT = 0, CH_ACT, CH_HMI, CH_OBS, CH__COUNT };
-enum { N_INTENT = 0, N_STATS, N_REDEEM, N_ESC, N__COUNT };
+enum { CH_AGENT = 0, CH_ACT, CH_HMI, CH_OBS, CH_ADMIN, CH__COUNT };
+enum { N_INTENT = 0, N_STATS, N_REDEEM, N_ESC, N_POLICY, N__COUNT };
 static dispatch_t *g_disp[CH__COUNT];
 static node_t g_nodes[N__COUNT] = {
     { .path = KX_PATH_INTENT, .chan = CH_AGENT },
     { .path = KX_PATH_STATS, .chan = CH_OBS },     /* read-only channel: observers can never propose */
     { .path = KX_PATH_REDEEM, .chan = CH_ACT },
     { .path = KX_PATH_ESCALATIONS, .chan = CH_HMI },
+    { .path = KX_PATH_POLICY, .chan = CH_ADMIN },  /* admin channel: only operator_t may connect (secpol) */
 };
 
 static uint64_t mono_ns(void) {
@@ -339,6 +344,162 @@ static void propose(resmgr_context_t *ctp, const kx_intent_t *in, kx_decision_t 
     }
 }
 
+/* ---- signed policy bundles (kervix/bundle.h) ----------------------------- */
+
+static struct {
+    pthread_mutex_t lock;
+    uint8_t         buf[KX_BUNDLE_MAX];   /* staged upload (write at offset 0 starts a new one) */
+    uint32_t        len;
+} g_stage = { .lock = PTHREAD_MUTEX_INITIALIZER };
+static kx_policy_t g_candidate;           /* verified + loaded, not yet active (under g_stage.lock) */
+static char        g_policy_source[64] = "built-in";
+static const char *g_datadir = "/data/kervix";
+
+/* Ed25519 verify with qcrypto: raw key -> SPKI DER (12-byte prefix), fresh contexts (S3 finding). */
+static int qc_verify(const uint8_t pub[32], const uint8_t *msg, uint32_t n, const uint8_t sig[64], void *ctx) {
+    (void)ctx;
+    static const uint8_t SPKI[12] = { 0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00 };
+    uint8_t der[44];
+    memcpy(der, SPKI, 12);
+    memcpy(der + 12, pub, 32);
+    qcrypto_ctx_t *k = NULL, *v = NULL;
+    qcrypto_key_t *key = NULL;
+    int status = 0, ok = 0;
+    qcrypto_signature_args_t sa;
+    memset(&sa, 0, sizeof sa);
+    sa.mode = QCRYPTO_SIGNATURE_VERIFY;
+    if (qcrypto_keygen_request("ed25519", NULL, 0, &k) == QCRYPTO_R_EOK &&
+        qcrypto_pubkey_from_mem(k, &key, der, sizeof der, QCRYPTO_KEY_FMT_DER) == QCRYPTO_R_EOK &&
+        qcrypto_signature_request("eddsa-pure", NULL, 0, &v) == QCRYPTO_R_EOK &&
+        qcrypto_signature_init(v, key, &sa) == QCRYPTO_R_EOK &&
+        qcrypto_signature_verify_oneshot(v, msg, n, sig, 64, &status) == QCRYPTO_R_EOK)
+        ok = status == 1;
+    if (key) qcrypto_release_key(key);
+    if (v) qcrypto_release_ctx(v);
+    if (k) qcrypto_release_ctx(k);
+    return ok;
+}
+
+static int read_all(const char *path, uint8_t *buf, uint32_t cap, uint32_t *n) {
+    int fd = open(path, O_RDONLY);
+    if (fd == -1) return -1;
+    ssize_t r = read(fd, buf, cap);
+    uint8_t extra;
+    int more = r >= 0 && (uint32_t)r == cap && read(fd, &extra, 1) == 1;
+    close(fd);
+    if (r < 0 || more) return -1;
+    *n = (uint32_t)r;
+    return 0;
+}
+/* write to <path>.tmp, fsync, rename: a crash leaves the old file or the new one */
+static int write_atomic(const char *path, const uint8_t *buf, uint32_t n) {
+    char tmp[300];
+    snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd == -1) return -1;
+    int ok = write(fd, buf, n) == (ssize_t)n && fsync(fd) == 0;
+    close(fd);
+    return ok && rename(tmp, path) == 0 ? 0 : -1;
+}
+
+/* Verify a bundle against the trust file and load it into g_candidate. 0 or an errno; *why for operators. */
+static int bundle_check(const uint8_t *buf, uint32_t n, char approver[48], const char **why) {
+    kx_bundle_t b;
+    if (kx_bundle_parse(buf, n, &b) != 0) { *why = "malformed bundle"; return EBADMSG; }
+    static uint8_t trust_text[4096];
+    uint32_t tn = 0;
+    char path[256];
+    snprintf(path, sizeof path, "%s/policy/trust", g_datadir);
+    if (read_all(path, trust_text, sizeof trust_text, &tn) != 0) { *why = "no trust file on the vehicle"; return EACCES; }
+    kx_trust_t T[KX_TRUST_MAX];
+    int nt = kx_trust_parse((const char *)trust_text, tn, T, KX_TRUST_MAX);
+    if (nt <= 0) { *why = "trust file empty or malformed"; return EACCES; }
+    int ia = -1, ip = -1;
+    kx_bundle_verdict_t v = kx_bundle_accept(&b, T, nt, qc_verify, NULL, &ia, &ip);
+    if (v != KX_BUNDLE_OK) { *why = kx_bundle_verdict_name(v); return v == KX_BUNDLE_MALFORMED ? EBADMSG : EACCES; }
+    if (kx_policy_load(&g_candidate, b.body, b.body_len) != 0) { *why = "policy body rejected by the loader"; return EINVAL; }
+    snprintf(approver, 48, "author:%.15s approver:%.15s", T[ia].label, T[ip].label);
+    return 0;
+}
+
+static void policy_status(kx_policy_status_t *st, int result, const char *detail) {
+    memset(st, 0, sizeof *st);
+    memcpy(st->policy_id, K.policy.policy_id, sizeof st->policy_id);
+    st->version = K.policy.version;
+    memcpy(st->hash, K.policy.hash, 32);
+    snprintf(st->source, sizeof st->source, "%s", g_policy_source);
+    st->result = result;
+    if (detail) snprintf(st->detail, sizeof st->detail, "%s", detail);
+}
+
+/* Activate the staged bundle. Only when nothing is in flight: an outstanding grant
+ * or escalation refers to a rule of the CURRENT policy (fail closed: EBUSY, retry). */
+static void policy_activate(kx_client_t who, kx_policy_status_t *st) {
+    char approver[48] = "";
+    const char *why = NULL;
+    pthread_mutex_lock(&g_stage.lock);
+    int rc = bundle_check(g_stage.buf, g_stage.len, approver, &why);
+    if (rc == 0) {
+        pthread_mutex_lock(&K.lock);
+        int pending = 0;
+        for (int i = 0; i < KX_MAX_ESCALATIONS; i++) if (g_esc[i].state == ESC_PENDING) pending++;
+        if (memcmp(g_candidate.hash, K.policy.hash, 32) == 0) { rc = EALREADY; why = "this policy is already active"; }
+        else if (K.grants.outstanding || K.awaiting_effect || pending) { rc = EBUSY; why = "grants or escalations in flight; retry"; }
+        else if (kxl_free() < 1u + owed() || !kxl_healthy()) { rc = EAGAIN; why = "ledger cannot record it (no audit, no action)"; }
+        else {
+            char hexh[65], path[300];
+            kx_hex(g_candidate.hash, 32, hexh);
+            snprintf(path, sizeof path, "%s/policy/%.16s.kxp", g_datadir, hexh);   /* archive: exported with the dossier */
+            char active[300];
+            snprintf(active, sizeof active, "%s/policy/active.kxp", g_datadir);
+            if (write_atomic(path, g_stage.buf, g_stage.len) != 0 || write_atomic(active, g_stage.buf, g_stage.len) != 0) {
+                rc = EIO; why = "cannot persist the bundle";
+            } else {
+                uint8_t prev[32];
+                memcpy(prev, K.policy.hash, 32);
+                K.policy = g_candidate;                       /* swap between evaluations (K.lock) */
+                snprintf(g_policy_source, sizeof g_policy_source, "bundle %s", approver);
+                kx_capsule_rec_t rec;
+                rec_init(&rec, KX_EV_POLICY, NULL, who);       /* policy_hash = the new policy */
+                rec.reason = KX_R_POLICY_ACTIVATED;
+                rec.human = 1;
+                memcpy(rec.prev_policy_hash, prev, 32);
+                snprintf(rec.approver, sizeof rec.approver, "%s", approver);
+                kxl_submit(&rec, owed());
+                printf("kervixd: POLICY ACTIVATED %s v%u.%u.%u hash %.16s… (%s)\n", K.policy.policy_id, K.policy.version >> 16,
+                       (K.policy.version >> 8) & 0xff, K.policy.version & 0xff, hexh, approver);
+            }
+        }
+        policy_status(st, rc, why);
+        pthread_mutex_unlock(&K.lock);
+    } else {
+        pthread_mutex_lock(&K.lock);
+        policy_status(st, rc, why);
+        pthread_mutex_unlock(&K.lock);
+    }
+    if (rc != 0) printf("kervixd: policy activation REFUSED (%s) by pid %d\n", why ? why : "?", who.pid);
+    pthread_mutex_unlock(&g_stage.lock);
+}
+
+static int io_write(resmgr_context_t *ctp, io_write_t *msg, void *ocb_v) {
+    iofunc_ocb_t *ocb = ocb_v;
+    int st = iofunc_write_verify(ctp, msg, ocb, NULL);
+    if (st != EOK) return st;
+    if ((msg->i.xtype & _IO_XTYPE_MASK) != _IO_XTYPE_NONE) return ENOSYS;
+    if (ocb->attr != &g_nodes[N_POLICY].attr) return EBADF;
+    size_t n = _IO_WRITE_GET_NBYTES(msg);
+    pthread_mutex_lock(&g_stage.lock);
+    if (ocb->offset == 0) g_stage.len = 0;              /* a new upload */
+    int rc = EOK;
+    if ((uint64_t)ocb->offset != g_stage.len || g_stage.len + n > sizeof g_stage.buf) rc = EFBIG;
+    else if (resmgr_msgget(ctp, g_stage.buf + g_stage.len, n, sizeof msg->i) != (ssize_t)n) rc = EIO;
+    else { g_stage.len += (uint32_t)n; ocb->offset += (off_t)n; }
+    pthread_mutex_unlock(&g_stage.lock);
+    if (rc != EOK) return rc;
+    _IO_SET_WRITE_NBYTES(ctp, (long)n);
+    return EOK;
+}
+
 static int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, void *ocb_v) {
     iofunc_ocb_t *ocb = ocb_v;
     int st = iofunc_devctl_default(ctp, msg, ocb);
@@ -348,6 +509,18 @@ static int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, void *ocb_v) {
     for (int i = 0; i < N__COUNT; i++) if (ocb->attr == &g_nodes[i].attr) node = &g_nodes[i];
 
     switch (msg->i.dcmd) {
+    case KX_DCMD_POLICY_ACTIVATE:
+    case KX_DCMD_POLICY_STATUS: {
+        if (node != &g_nodes[N_POLICY]) return ENOTTY;
+        kx_policy_status_t pst;
+        kx_client_t who = { ctp->info.type_id, ctp->info.pid };
+        if (msg->i.dcmd == KX_DCMD_POLICY_ACTIVATE) policy_activate(who, &pst);
+        else { pthread_mutex_lock(&K.lock); policy_status(&pst, 0, NULL); pthread_mutex_unlock(&K.lock); }
+        memset(&msg->o, 0, sizeof msg->o);
+        msg->o.nbytes = sizeof pst;
+        memcpy(_DEVCTL_DATA(msg->o), &pst, sizeof pst);
+        return _RESMGR_PTR(ctp, &msg->o, sizeof msg->o + sizeof pst);
+    }
     case KX_DCMD_PROPOSE: {
         if (node != &g_nodes[N_INTENT]) return ENOTTY;
         kx_intent_t in;
@@ -699,6 +872,28 @@ int main(int argc, char **argv) {
     kx_grant_table_init(&K.grants, key);
     qcrypto_memclear(key, sizeof key);
 
+    /* signed policy: re-verified at every start; a bundle that no longer passes
+     * (key removed from the trust file, file damaged) leaves the built-in policy */
+    g_datadir = datadir;
+    {
+        char path[300];
+        snprintf(path, sizeof path, "%s/policy", datadir);
+        mkdir(path, 0700);
+        snprintf(path, sizeof path, "%s/policy/active.kxp", datadir);
+        if (read_all(path, g_stage.buf, sizeof g_stage.buf, &g_stage.len) == 0) {
+            char approver[48];
+            const char *why = NULL;
+            if (bundle_check(g_stage.buf, g_stage.len, approver, &why) == 0) {
+                K.policy = g_candidate;
+                snprintf(g_policy_source, sizeof g_policy_source, "bundle %s", approver);
+                printf("kervixd: policy from signed bundle (%s)\n", approver);
+            } else {
+                printf("kervixd: WARNING active policy bundle REJECTED (%s): using the built-in policy\n", why);
+            }
+        }
+        g_stage.len = 0;
+    }
+
     kxl_config_t lc = { datadir, K.vehicle_id, K.tenant_id, ring, slow_ms, K.verbose, { 0 }, restart, { 0 } };
     memcpy(lc.policy_hash, K.policy.hash, 32);
     memcpy(lc.restart_cause, restart_cause, sizeof lc.restart_cause);
@@ -714,7 +909,8 @@ int main(int argc, char **argv) {
         n->io.read = io_read;
         n->io.close_ocb = io_close_ocb;
         n->io.unblock = io_unblock;
-        iofunc_attr_init(&n->attr, S_IFCHR | (i == N_STATS ? 0444 : 0666), NULL, NULL);
+        n->io.write = io_write;
+        iofunc_attr_init(&n->attr, S_IFCHR | (i == N_STATS ? 0444 : i == N_POLICY ? 0600 : 0666), NULL, NULL);
         resmgr_attr_t ra2;
         memset(&ra2, 0, sizeof ra2);
         ra2.nparts_max = 1;

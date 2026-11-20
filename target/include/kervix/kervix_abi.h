@@ -9,7 +9,7 @@
  *   actuator bus      /dev/sdv/actuators   EXECUTE        (agent gateway with a grant)
  *   hmi channel       /dev/kervix/escalations  read (text) | LIST | SUBSCRIBE | RESOLVE
  *                     (the driver's HMI; outranks agent traffic by priority)
- * The admin channel (/dev/kervix/policy) lands with signed policy bundles.
+ *   admin channel     /dev/kervix/policy   write(bundle) + POLICY_ACTIVATE, POLICY_STATUS (operator only)
  *
  * ESCALATE lifecycle: PROPOSE -> ESCALATE(id) -> the proposer may AWAIT(id),
  * a deferred reply: it stays REPLY-blocked in the kernel, no polling. The HMI
@@ -29,6 +29,7 @@
 #define KX_PATH_REDEEM    "/dev/kervix/redeem"
 #define KX_PATH_ACTUATORS "/dev/sdv/actuators"
 #define KX_PATH_ESCALATIONS "/dev/kervix/escalations"
+#define KX_PATH_POLICY    "/dev/kervix/policy"
 /* Raw actuator access WITHOUT a grant: the maintenance path real ECUs have.
  * Its channel type has no connect rule for ANY process type (secpol): it
  * exists to show that bypassing Kervix is impossible, not merely forbidden. */
@@ -78,6 +79,22 @@ typedef struct {
 #define KX_DCMD_ESC_LIST      __DIOF(_DCMD_MISC, 0x230, kx_esc_list_t)
 #define KX_DCMD_ESC_RESOLVE   __DIOT(_DCMD_MISC, 0x231, kx_resolve_req_t)
 #define KX_DCMD_ESC_SUBSCRIBE __DIOT(_DCMD_MISC, 0x232, struct sigevent)
+
+/* Signed policy bundles (kervix/bundle.h): write() the .kxp to /dev/kervix/policy
+ * (offset 0 starts a new upload), then POLICY_ACTIVATE. The reply always
+ * carries the status; `result` is 0 or an errno (EACCES signature/trust,
+ * EBADMSG malformed, EINVAL rejected by the loader, EBUSY grants or escalations
+ * in flight, EALREADY already active, EAGAIN ledger full, EIO persist failed). */
+typedef struct {
+    char     policy_id[32];
+    uint32_t version;
+    int32_t  result;
+    uint8_t  hash[32];
+    char     source[64];            /* "built-in" or "bundle author:<label> approver:<label>" */
+    char     detail[64];            /* why an activation was refused */
+} kx_policy_status_t;
+#define KX_DCMD_POLICY_ACTIVATE __DIOF(_DCMD_MISC, 0x240, kx_policy_status_t)
+#define KX_DCMD_POLICY_STATUS   __DIOF(_DCMD_MISC, 0x241, kx_policy_status_t)
 
 _Static_assert(sizeof(kx_decision_t) >= sizeof(kx_intent_t), "PROPOSE reuses one buffer");
 _Static_assert(sizeof(kx_decision_t) >= sizeof(kx_await_req_t), "AWAIT reuses one buffer");

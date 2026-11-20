@@ -9,7 +9,7 @@
 #include "kervix/sha256.h"
 
 static const char *const GATE_NAMES[] = { "none", "k4_validation", "expiry", "k1_stale", "k2_implausible", "k3_ledger", "require" };
-static const char *const EVENT_NAMES[] = { "", "epoch", "decision", "effect", "escalation_resolved", "grant_refused", "grant_expired" };
+static const char *const EVENT_NAMES[] = { "", "epoch", "decision", "effect", "escalation_resolved", "grant_refused", "grant_expired", "policy_activated" };
 static const char *const VERDICTS[] = { "NONE", "ALLOW", "ESCALATE", "BLOCK" };
 
 static void hex(const uint8_t *b, size_t n, char *out) { kx_hex(b, n, out); }
@@ -116,6 +116,7 @@ static int write_evidence(const kx_capsule_rec_t *r, const char *tenant_id, char
     kx_jw_key(&w, "ledger_seq"); kx_jw_int(&w, (int64_t)r->ledger_seq);
     sha_hex_prefixed(r->policy_hash, h);
     kx_jw_key(&w, "policy_hash"); kx_jw_str(&w, h);
+    if (r->event == KX_EV_POLICY) { sha_hex_prefixed(r->prev_policy_hash, h); kx_jw_key(&w, "previous_policy_hash"); kx_jw_str(&w, h); }
     if (r->event == KX_EV_EPOCH) { kx_jw_key(&w, "quarantined_bytes"); kx_jw_int(&w, (int64_t)r->quarantined_bytes); }
     kx_jw_key(&w, "reason"); kx_jw_str(&w, reason_name(r->reason));
     if (r->event == KX_EV_EPOCH && r->restart) {       /* why this epoch began: supervisor restart */
@@ -140,6 +141,7 @@ typedef struct { const char *decision, *approver, *verdict_class; int human; } d
 static disp_t disposition_of(const kx_capsule_rec_t *r) {
     switch (r->event) {
     case KX_EV_EPOCH:         return (disp_t){ "accept", "policy", "epoch_boundary", 0 };
+    case KX_EV_POLICY:        return (disp_t){ "accept", "human", "resolved", 1 };   /* author + approver signed it */
     case KX_EV_EFFECT:        return (disp_t){ "accept", "policy", r->effect_ok ? "executed" : "errored", 0 };
     case KX_EV_GRANT_REFUSED: return (disp_t){ "reject", "policy", "denied", 0 };
     case KX_EV_GRANT_EXPIRED: return (disp_t){ "reject", "policy", "expired", 0 };
@@ -165,7 +167,8 @@ static int write_capsule(kx_jw_t *w, const kx_capsule_rec_t *r, const kx_capsule
     char uuid[37], h[72], ts[25], tmp[72];
     disp_t d = disposition_of(r);
     if (d.decision == NULL || kx_fmt_rfc3339_ms(r->timestamp_ms, ts) != 0) return -1;
-    if (r->event != KX_EV_EPOCH && !r->has_intent) return -1;
+    int fyi = r->event == KX_EV_EPOCH || r->event == KX_EV_POLICY;
+    if (!fyi && !r->has_intent) return -1;
     const kx_action_spec_t *a = r->has_intent ? kx_catalog_action(r->intent.action) : NULL;
     int planned = r->event == KX_EV_DECISION && r->verdict == KX_VERDICT_ALLOW;
     int dispatched = r->event == KX_EV_EFFECT;
@@ -177,8 +180,9 @@ static int write_capsule(kx_jw_t *w, const kx_capsule_rec_t *r, const kx_capsule
     kx_jw_obj_begin(w);
     kx_jw_key(w, "action_id");
     if (r->event == KX_EV_EPOCH) { memcpy(tmp, "epoch:", 6); memcpy(tmp + 6, epoch_hex, 16); tmp[22] = '\0'; kx_jw_str(w, tmp); }
+    else if (r->event == KX_EV_POLICY) { memcpy(tmp, "policy:", 7); hex(r->policy_hash, 8, tmp + 7); kx_jw_str(w, tmp); }
     else kx_jw_str(w, uuid);
-    kx_jw_key(w, "action_type"); kx_jw_str(w, r->event == KX_EV_EPOCH ? "fyi" : "decide");
+    kx_jw_key(w, "action_type"); kx_jw_str(w, fyi ? "fyi" : "decide");
     kx_jw_key(w, "assurance");
     kx_jw_obj_begin(w);
     kx_jw_key(w, "attestation_mode"); kx_jw_str(w, "self_attested");
@@ -289,7 +293,7 @@ int kx_capsule_build(const kx_capsule_rec_t *rec, const kx_capsule_ctx_t *ctx, c
                      kx_relation_t relation, const uint8_t ref_decision[32], char *out, size_t cap,
                      uint8_t capsule_id[32]) {
     if (rec == NULL || ctx == NULL || ctx->vehicle_id == NULL || out == NULL) return -1;
-    if (rec->event < KX_EV_EPOCH || rec->event > KX_EV_GRANT_EXPIRED) return -1;
+    if (rec->event < KX_EV_EPOCH || rec->event > KX_EV_POLICY) return -1;
     static char evidence[3072];  /* single writer thread: static scratch, not reentrant */
     int ev = write_evidence(rec, ctx->tenant_id, evidence, sizeof evidence);
     if (ev < 0) return -1;
