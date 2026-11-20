@@ -27,6 +27,7 @@ allow_attach vsim_t     /dev/sdv/sim/ctl         vsim_ctl_ch_t;
 allow_attach vsim_t     /dev/sdv/sim/actuate     vsim_act_ch_t;
 allow_attach kervix_t   /dev/kervix/intent       kx_agent_ch_t;
 allow_attach kervix_t   /dev/kervix/stats        kx_obs_ch_t;
+allow_attach kervix_t   /dev/kervix/dossier      kx_obs_ch_t;   # the signed ledger, read-only
 allow_attach kervix_t   /dev/kervix/redeem       kx_act_ch_t;
 allow_attach kervix_t   /dev/kervix/escalations  kx_hmi_ch_t;
 allow_attach kervix_t   /dev/kervix/policy       kx_admin_ch_t;

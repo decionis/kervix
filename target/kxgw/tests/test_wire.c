@@ -78,6 +78,9 @@ static void test_other_ops(void) {
     KX_CHECK(parse("{\"op\":\"sim\",\"cmd\":\"scenario highway\"}", &rq, &err) == 0 && !strcmp(rq.cmd, "scenario highway"));
     KX_CHECK(parse("{\"op\":\"sim\",\"cmd\":\"say \\\"hi\\\" \\\\ \\/\"}", &rq, &err) == 0 && !strcmp(rq.cmd, "say \"hi\" \\ /"));
     KX_CHECK(strcmp(kxw_op_name(KXW_OP_RESOLVE), "resolve") == 0);
+    KX_CHECK(parse("{\"op\":\"ledger\",\"from_seq\":42,\"max\":100}", &rq, &err) == 0 && rq.op == KXW_OP_LEDGER && rq.from_seq == 42 && rq.max == 100);
+    KX_CHECK(parse("{\"op\":\"ledger_info\"}", &rq, &err) == 0 && rq.op == KXW_OP_LEDGER_INFO);
+    KX_CHECK(parse("{\"op\":\"policy\",\"name\":\"4e400c092656d11a\"}", &rq, &err) == 0 && !strcmp(rq.name, "4e400c092656d11a"));
 }
 
 static void test_rejects(void) {
@@ -96,6 +99,9 @@ static void test_rejects(void) {
     KX_CHECK(rejects("{\"op\":\"execute\",\"grant_id\":\"0011\"}", "32 hex"));
     KX_CHECK(rejects("{\"op\":\"resolve\",\"escalation_id\":1}", "needs escalation_id and approve"));
     KX_CHECK(rejects("{\"op\":\"sim\"}", "needs a cmd"));
+    KX_CHECK(rejects("{\"op\":\"policy\",\"name\":\"../../keys/x\"}", "16 hex"));
+    KX_CHECK(rejects("{\"op\":\"ledger\",\"from_seq\":0}", ">= 1"));
+    KX_CHECK(rejects("{\"op\":\"ledger\",\"max\":5000}", "out of range"));
     KX_CHECK(rejects("{\"op\":\"hello\",\"id\":\"a b\"}", "id may only"));
     KX_CHECK(rejects("{\"op\":\"propose\",\"action\":\"x\",\"intent_id\":\"nope\"}", "UUID"));
     /* strings: printable ASCII only, no \u escapes, bounded */

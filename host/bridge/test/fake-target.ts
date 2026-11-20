@@ -6,6 +6,8 @@
 //
 //   node host/bridge/test/fake-target.ts     (listens on 127.0.0.1:7301-7304)
 import { randomBytes, randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
 
@@ -19,6 +21,14 @@ export class FakeTarget {
   ports: Record<Role, number> = { agent: 0, hmi: 0, observer: 0, world: 0 };
   tel: Tel = { speed_dkph: 0, gear: 0, park_brake: 1, soc_dpct: 800, charging: 0, driver_present: 1, service_mode: 0, doors_locked_mask: 15, hvac_setpoint_dc: 210, window_fl_pct: 0, window_fr_pct: 0, window_rl_pct: 0, window_rr_pct: 0, hazard_on: 0, acc_target_kph: 0, charge_limit_pct: 80, immobilizer_on: 0, location_shared: 0, ota_state: 0 };
   seq = 0;
+  /** the ledger it serves: the committed, really QNX-signed fixture dossier (read-only) */
+  ledger = (() => {
+    const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../tests/fixtures/dossier-qnx-qemu-2026-11-20");
+    const caps = fs.readFileSync(path.join(dir, "capsules.jsonl"), "utf8").trim().split("\n");
+    const envs = fs.readFileSync(path.join(dir, "envelopes.txt"), "utf8").trim().split("\n");
+    const jwk = fs.readFileSync(path.join(dir, "vehicle.jwk.json"), "utf8").trim();
+    return { caps, envs, jwk };
+  })();
   /** simulate kervixd being down: stats fail the way the real observer gateway reports it */
   authorityDown = false;
   private grants = new Map<string, { spent: boolean; action: string }>();
@@ -137,7 +147,7 @@ export class FakeTarget {
 
   private async handle(role: Role, s: net.Socket, r: Record<string, unknown>, subscribe: (hz: number) => void): Promise<void> {
     const id = r.id as string | undefined;
-    const ops: Record<Role, string[]> = { agent: ["hello", "propose", "execute", "state", "stats"], hmi: ["hello", "escalations", "resolve", "state", "stats"], observer: ["hello", "subscribe", "state", "stats"], world: ["hello", "sim", "state"] };
+    const ops: Record<Role, string[]> = { agent: ["hello", "propose", "execute", "state", "stats"], hmi: ["hello", "escalations", "resolve", "state", "stats"], observer: ["hello", "subscribe", "state", "stats", "ledger_info", "ledger", "policy"], world: ["hello", "sim", "state"] };
     if (!ops[role].includes(String(r.op))) return this.send(s, { kind: "error", id, error: `op '${r.op}' is not available on the ${role} gateway`, done: true });
     switch (r.op) {
       case "hello":
@@ -147,6 +157,21 @@ export class FakeTarget {
       case "stats":
         if (this.authorityDown) return this.send(s, { kind: "error", id, error: "authority unavailable (is kervixd running?)", done: true });
         return this.send(s, { kind: "stats", id, text: ["FAKE TARGET (no Kervix)"], done: true });
+      case "ledger_info": {
+        const n = this.ledger.caps.length;
+        return this.send(s, { kind: "ledger_info", id, records: n, first_seq: 1, last_seq: n, jwk: this.ledger.jwk, policies: [], done: true });
+      }
+      case "ledger": {
+        const from = Number(r.from_seq ?? 1), max = Number(r.max ?? 100);
+        let seq = from;
+        for (; seq < from + max && seq <= this.ledger.caps.length; seq++) {
+          const text = this.ledger.caps[seq - 1];
+          this.send(s, { kind: "record", id, seq, capsule_id: JSON.parse(text).capsule_id, capsule: text, envelope: this.ledger.envs[seq - 1], done: false });
+        }
+        return this.send(s, { kind: "ledger_end", id, sent: seq - from, next_seq: seq, done: true });
+      }
+      case "policy":
+        return this.send(s, { kind: "error", id, error: "no such policy bundle", done: true });
       case "subscribe":
         subscribe(Math.max(1, Math.min(50, Number(r.hz ?? 10))));
         return this.send(s, { kind: "subscribed", id, hz: r.hz, done: true });

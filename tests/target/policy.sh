@@ -98,6 +98,9 @@ echo "$o" | grep -E "policies|replay|VERIFIED" | sed 's/^/INFO  /'
 has "$o" "^VERIFIED" && has "$o" "1 signed bundle" && has "$o" "under 2 policies" && grep -q '"event":"policy_activated"' build/policy-dossier/capsules.jsonl \
   && pass "dossier VERIFIED offline: bundle signatures checked, decisions replayed under both policies" || bad "verify: $o"
 
+o=$(node tests/target/ledger-mirror.ts 2>&1 || true)
+echo "$o" | grep -q "^PASS" && echo "$o" || bad "$o"
+
 o=$($Q ssh "slog2info | grep secpolgenerate | grep -E 'type:(vsim|kervix|actuator|agentgw|hmigw|operator|supervisor|obsgw|worldgw)' | grep -v 'kx_admin_ch_t' || true")
 [ -z "$o" ] && pass "no secpol denials besides the two admin-channel probes" || bad "denials: $o"
 [ $fail -eq 0 ] && echo "POLICY RESULT: PASS" || { echo "POLICY RESULT: FAIL"; exit 1; }

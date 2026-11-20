@@ -55,6 +55,18 @@ m.map((x) => `${x.kind}:${x.verdict ?? x.result}`).join() === "decision:ESCALATE
 const kinds = b.feed.map((e) => e.msg.kind);
 kinds.includes("resolved") && kinds.filter((k) => k === "execution").length >= 3 ? pass(`feed recorded ${b.feed.length} events`) : bad(`feed ${kinds}`);
 
+// ledger explorer: the vehicle's signed ledger, mirrored through the observer gateway and verified
+await b.syncLedger();
+const li = b.ledger.info;
+li.records > 5 && li.first_seq === 1 && li.last_seq === li.records && /^[A-Za-z0-9_-]{43}$/.test(String(li.kid))
+  ? pass(`ledger mirrored from the vehicle: ${li.records} signed capsules, key ${String(li.kid).slice(0, 12)}…`) : bad(`ledger info ${JSON.stringify(li)}`);
+const v = await (await fetch(base + "/api/verify", { method: "POST", body: "{}" })).json();
+v.verified && v.replay.match >= 3 && v.findings.length === 0
+  ? pass(`Verify button: VERIFIED (signatures, chain, replay ${v.replay.match}/${v.replay.match}) in ${v.elapsed_ms} ms`) : bad(`verify ${JSON.stringify(v.findings)}`);
+const t = await (await fetch(base + "/api/verify", { method: "POST", body: JSON.stringify({ tamper_seq: 3 }) })).json();
+!t.verified && t.findings.length > 0 && t.findings.every((f: { where: string }) => f.where === "capsule #3")
+  ? pass("one record back-dated by a few ms: NOT VERIFIED, caught exactly at capsule #3") : bad(`tamper ${JSON.stringify(t.findings)}`);
+
 ws.close();
 await b.stop();
 console.log(fail ? "BRIDGE RESULT: FAIL" : "BRIDGE RESULT: PASS");

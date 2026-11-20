@@ -14,6 +14,7 @@ import path from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 
 import { DEFAULT_PORTS, GatewayConnection, GatewayError, oneShot, type GwMsg, type GwRequest, type Role } from "./gateway.ts";
+import { LedgerMirror, summarize } from "./ledger.ts";
 
 export type BridgeOptions = {
   target: string;
@@ -49,6 +50,9 @@ export class Bridge extends EventEmitter {
   /** kervixd reachable? Derived from the observer's stats stream (1 Hz): stats = up, "authority unavailable" = down. */
   authority: { up: boolean | null; since: number } = { up: null, since: Date.now() };
   private seq = 0;
+  readonly ledger: LedgerMirror;
+  private ledgerTimer: NodeJS.Timeout | null = null;
+  private ledgerSoon: NodeJS.Timeout | null = null;
   private server: http.Server | null = null;
   private wss: WebSocketServer | null = null;
 
@@ -64,6 +68,7 @@ export class Bridge extends EventEmitter {
     };
     const p = this.opts.ports;
     const t = this.opts.target;
+    this.ledger = new LedgerMirror(t, p.observer);
     this.gw = {
       agent: new GatewayConnection("agent", t, p.agent),
       hmi: new GatewayConnection("hmi", t, p.hmi),
@@ -115,6 +120,17 @@ export class Bridge extends EventEmitter {
     if (this.feed.length > FEED_MAX) this.feed.shift();
     this.broadcast({ type: "feed", event: ev });
     this.emit("feed", ev);
+    // every decision is a ledger record soon: refresh the mirror shortly after
+    if (!this.ledgerSoon) this.ledgerSoon = setTimeout(() => { this.ledgerSoon = null; void this.syncLedger(); }, 800);
+  }
+
+  async syncLedger(): Promise<void> {
+    if (!this.gw.observer.up) return;
+    try {
+      if (await this.ledger.sync()) this.broadcast({ type: "ledger", info: this.ledger.info });
+    } catch (e) {
+      this.opts.log(`bridge: ledger sync: ${(e as Error).message}`);
+    }
   }
 
   /** PROPOSE (optionally await the driver and execute). Every line is recorded in the feed. */
@@ -172,7 +188,7 @@ export class Bridge extends EventEmitter {
   snapshot(): Record<string, unknown> {
     const gateways: Record<string, unknown> = {};
     for (const role of Object.keys(this.gw) as Role[]) gateways[role] = { up: this.gw[role].up, hello: this.gw[role].hello };
-    return { type: "snapshot", target: this.opts.target, gateways, authority: this.authority, telemetry: this.telemetry, stats: this.stats, escalations: this.escalations, feed: this.feed };
+    return { type: "snapshot", target: this.opts.target, gateways, authority: this.authority, ledger: this.ledger.info, telemetry: this.telemetry, stats: this.stats, escalations: this.escalations, feed: this.feed };
   }
 
   // -------------------------------------------------------------------- host
@@ -185,6 +201,8 @@ export class Bridge extends EventEmitter {
 
   async start(): Promise<{ port: number }> {
     for (const c of Object.values(this.gw)) c.start();
+    this.gw.observer.on("up", () => void this.syncLedger());
+    this.ledgerTimer = setInterval(() => void this.syncLedger(), 3000);
     this.server = http.createServer((req, res) => void this.http(req, res));
     this.wss = new WebSocketServer({ server: this.server, path: "/ws", maxPayload: BODY_MAX });
     this.wss.on("connection", (ws) => this.onWs(ws));
@@ -196,6 +214,8 @@ export class Bridge extends EventEmitter {
   }
 
   async stop(): Promise<void> {
+    if (this.ledgerTimer) clearInterval(this.ledgerTimer);
+    if (this.ledgerSoon) clearTimeout(this.ledgerSoon);
     for (const c of Object.values(this.gw)) c.stop();
     for (const ws of this.wss?.clients ?? []) ws.terminate();
     this.wss?.close();
@@ -249,6 +269,16 @@ export class Bridge extends EventEmitter {
             return send(200, this.feed.filter((e) => e.seq > Number(url.searchParams.get("after") ?? 0)));
           case "GET /api/escalations":
             return send(200, this.escalations);
+          case "GET /api/ledger": {
+            const after = Number(url.searchParams.get("after") ?? 0), limit = Math.min(1000, Number(url.searchParams.get("limit") ?? 500));
+            const items = this.ledger.records.filter((r) => r.seq > after).slice(-limit).map(summarize);
+            return send(200, { info: this.ledger.info, items });
+          }
+          case "POST /api/verify": {
+            await this.syncLedger();
+            const t = Number(body.tamper_seq ?? 0);
+            return send(200, await this.ledger.verify(t > 0 ? { tamperSeq: t } : {}));
+          }
           case "POST /api/propose":
             if (typeof body.action !== "string") return send(400, { error: "action required" });
             return send(200, { messages: await this.propose(body as ProposeInput, String(body.source ?? "agent")) });
@@ -261,8 +291,14 @@ export class Bridge extends EventEmitter {
           case "POST /api/note":
             this.note(String(body.source ?? "agent"), body);
             return send(200, { ok: true });
-          default:
+          default: {
+            const m = /^GET \/api\/ledger\/(\d+)$/.exec(route);
+            if (m) {
+              const r = this.ledger.records.find((x) => x.seq === Number(m[1]));
+              return r ? send(200, { ...r, capsule: JSON.parse(r.text), summary: summarize(r) }) : send(404, { error: "no such record" });
+            }
             return send(404, { error: "no such endpoint" });
+          }
         }
       }
       if (this.opts.staticDir && req.method === "GET") return serveStatic(this.opts.staticDir, url.pathname, res);

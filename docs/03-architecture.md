@@ -193,7 +193,7 @@ typedef struct {
 | `/dev/kervix/redeem` | `KX_DCMD_EFFECT` (grant_id, result, response digest) | actuatord | Writes the `confirmed`/`failed` effect capsule |
 | `/dev/kervix/escalations` | `read()` (text list), `ionotify` (new item), `KX_DCMD_RESOLVE` (id, approve/deny, approver id) | hmi gw, kxctl | Human disposition → resolution capsule → on approve: re-evaluate the interlock and issue a grant to the waiting AWAIT caller |
 | `/dev/kervix/policy` | `write()` signed bundle; `KX_DCMD_POLICY_ACTIVATE`, `KX_DCMD_POLICY_STATUS` | kxctl (operator only: its own channel type `kx_admin_ch_t`) | **Implemented.** Verify both signatures (qcrypto Ed25519) against the vehicle's trust file → load (C loader) → refuse while grants/escalations are in flight (`EBUSY`) → persist → swap under the decision lock → signed `policy_activated` capsule |
-| `/dev/kervix/dossier` | `read()` streams JSONL capsules; `KX_DCMD_HEAD` | observer, kxctl | `cat /dev/kervix/dossier` works: "everything is a file" UX |
+| `/dev/kervix/dossier` | `KX_DCMD_DOSSIER_INFO` (records, range, vehicle JWK, archived policy bundles), `KX_DCMD_DOSSIER_GET` (one record by seq: capsule + envelope + id), `KX_DCMD_POLICY_CHUNK` (an archived bundle, 8 KiB at a time) | observer (read-only channel `kx_obs_ch_t`) | **Implemented.** Served from an in-memory seq → offset index and a read-only fd, CRC-checked on every read; bundle names must be 16 hex digits (no paths) |
 | `/dev/kervix/stats` | `read()` text: counters + latency histogram | anyone on ch_agent | `cat /dev/kervix/stats` |
 | `/dev/sdv/actuators` | `KX_DCMD_EXECUTE` (grant + command) | agent gw | actuatord → REDEEM → apply via `/dev/sdv/sim/actuate` → EFFECT |
 
@@ -467,6 +467,12 @@ Tampering detected by `tests/target/ledger.sh`: edited evidence (with and withou
    - K3 back-pressure BLOCKs (`LEDGER_PRESSURE` when the queue lacked room) are reported as attested overrides.
    - **Why it matters:** a signature proves *who* recorded a decision, and replay proves the decision *follows from the policy*. `tests/conformance/liar-dossier.mjs` builds a fully valid, **signed** dossier in which one decision contradicts the policy (an OTA flash at 110 km/h recorded as ALLOW). Checks 1–6 pass, and only replay rejects it. A second case does the same for a grant bound to the wrong intent hash.
    - The same module can run in the browser for in-dashboard verification (M3).
+
+**Ledger explorer (implemented, M3):**
+- **Data path:** the observer gateway exposes the dossier node as `ledger_info`, `ledger` (stream from `from_seq`) and `policy` (bundle chunks). The bridge keeps an incremental mirror (`host/bridge/src/ledger.ts`), synced every 3 s and right after each recorded event; it starts over if the vehicle's ledger was re-provisioned.
+- **Verify:** `POST /api/verify` runs **`verifyDossier`** on the mirror. That is the kervix-verify library, so the CLI and the button share one code path (`host/verify/verify-lib.mjs`). The manifest is the vehicle's own head (records, range, head id), as fetched.
+- **Dashboard (Ledger tab):** lists every signed capsule with filters, shows a capsule in detail (chain, disposition, policy, epoch, full JSON), and runs Verify. **"Edit capsule #k and verify"** back-dates one record by a few milliseconds in a copy; the result is NOT VERIFIED, with the finding on exactly that capsule.
+- On QNX: `make target-bridge` mirrors and verifies the ledger and catches a one-record edit; `make target-policy` also fetches the signed bundles and replays decisions under both policies.
 
 ## 10. Real-time design and timing budget
 

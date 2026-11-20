@@ -18,6 +18,7 @@
 #include <stdint.h>
 
 #include "kervix/capsule.h"
+#include "kervix/cose.h"
 
 typedef struct {
     const char *datadir;
@@ -47,5 +48,14 @@ int  kxl_submit(const kx_capsule_rec_t *rec, uint32_t keep_free);
 int  kxl_healthy(void);
 /* One-line status for /dev/kervix/stats. */
 void kxl_status(char *buf, size_t cap);
+
+/* Read side (ledger explorer, /dev/kervix/dossier): every committed record by
+ * sequence number, served from an in-memory offset index and a read-only fd;
+ * CRC-checked on every read. */
+#define KXL_INDEX_MAX 65536u
+typedef struct { uint64_t records, first_seq, last_seq; char jwk[256]; } kxl_info_t;
+void kxl_info(kxl_info_t *out);
+/* capsule JSON (NUL-terminated) + envelope + id; returns the JSON length or -1 */
+int  kxl_read(uint64_t seq, char *json, size_t cap, uint8_t env[KX_COSE_ENVELOPE_LEN], uint8_t id[32]);
 
 #endif /* KERVIXD_KXLEDGER_H */

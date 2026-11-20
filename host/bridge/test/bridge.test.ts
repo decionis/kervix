@@ -115,6 +115,30 @@ test("authority up/down follows the observer's stats stream (fail-closed banner)
   assert.equal((bridge.snapshot().authority as { up: boolean }).up, true);
 });
 
+test("ledger explorer: mirrors the vehicle's signed ledger and verifies it with the kervix-verify checks", async () => {
+  await bridge.syncLedger();
+  const n = target.ledger.caps.length;
+  assert.equal(bridge.ledger.info.records, n);
+  assert.match(String(bridge.ledger.info.kid), /^[A-Za-z0-9_-]{43}$/);
+  const list = await (await fetch(base + "/api/ledger?after=0")).json();
+  assert.equal(list.items.length, n);
+  assert.equal(list.items[0].event, "epoch");
+  assert.ok(list.items.some((i: { event: string; verdict: string }) => i.event === "decision" && i.verdict === "ALLOW"));
+  const one = await (await fetch(base + "/api/ledger/2")).json();
+  assert.equal(one.seq, 2);
+  assert.equal(one.capsule.evidence.kervix.ledger_seq, 2);
+  // the real thing verifies: signatures by the pinned key, chain, replay on the C core
+  const ok = await (await fetch(base + "/api/verify", { method: "POST", body: "{}" })).json();
+  assert.equal(ok.verified, true, JSON.stringify(ok.findings));
+  assert.ok(ok.replay.match > 0);
+  // flip one digit in capsule #3: caught exactly there, as a tampered capsule
+  const bad = await (await fetch(base + "/api/verify", { method: "POST", body: JSON.stringify({ tamper_seq: 3 }) })).json();
+  assert.equal(bad.verified, false);
+  assert.equal(bad.tampered_seq, 3);
+  assert.ok(bad.findings.some((f: { where: string; message: string }) => f.where === "capsule #3" && /TAMPERED|canonical/.test(f.message)), JSON.stringify(bad.findings));
+  assert.ok(bad.findings.every((f: { where: string }) => f.where === "capsule #3"), JSON.stringify(bad.findings));
+});
+
 test("gateway client: reconnects, splits lines, rejects pending requests on loss", async () => {
   const got: GwMsg[] = [];
   const feed = lineReader((m) => got.push(m), () => got.push({ kind: "BAD" }));

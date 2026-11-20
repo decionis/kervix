@@ -1,4 +1,6 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
+
+import { LedgerView } from "./Ledger.tsx";
 
 import { lastDecision } from "./model.ts";
 import { Badge, EscalationCard, Feed, LatencyHistogram, TelemetryStrip, Tiles, WorldControls } from "./panels.tsx";
@@ -10,6 +12,7 @@ const ROLES = ["agent", "hmi", "observer", "world"];
 
 export function App() {
   const { state, send } = useBridge();
+  const [view, setView] = useState<"live" | "ledger">("live");
   const offline = state.connected && state.authority.up === false;
   const last = lastDecision(state.feed);
   const showToast = last && Date.now() - last.t < 8000;
@@ -23,6 +26,12 @@ export function App() {
           <div className="brand">
             KERVIX<small>execution authority on QNX 8.0 · {state.target || "…"}</small>
           </div>
+          <nav className="tabs">
+            <button className={view === "live" ? "on" : ""} onClick={() => setView("live")}>Live</button>
+            <button className={view === "ledger" ? "on" : ""} onClick={() => setView("ledger")}>
+              Ledger{state.ledger ? ` · ${state.ledger.records}` : ""}
+            </button>
+          </nav>
           <div className="chips">
             <span className="chip">
               <span className="dot" style={{ background: state.connected ? "var(--good)" : "var(--critical)" }} />
@@ -45,7 +54,7 @@ export function App() {
         </header>
       </div>
 
-      <main className="main">
+      {view === "ledger" ? <LedgerView info={state.ledger} /> : <main className="main">
         <section className="col">
           <div className="card twin">
             <Suspense fallback={<div className="overlay">loading 3D…</div>}>
@@ -85,7 +94,7 @@ export function App() {
           <LatencyHistogram s={state.stats} emulated={emulated} />
           <Feed feed={state.feed} />
         </section>
-      </main>
+      </main>}
     </div>
   );
 }

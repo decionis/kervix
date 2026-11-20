@@ -47,7 +47,22 @@ static struct {
     struct { uint8_t grant[16]; uint8_t capsule[32]; } gmap[GRANT_MAP];
     uint32_t           gmap_next;
     uint64_t           quarantined;
-} L = { .lock = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, .fd = -1 };
+    char               jwk[256];
+    /* read side: seq -> file offset of every committed record (published after its write) */
+    pthread_mutex_t    ilock;
+    int                rfd;
+    uint64_t           first_seq, n_index;
+    uint64_t           end_off;
+} L = { .lock = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, .fd = -1,
+        .ilock = PTHREAD_MUTEX_INITIALIZER, .rfd = -1 };
+static uint32_t L_index[KXL_INDEX_MAX];             /* 256 KiB: offsets fit 32 bits (ledger < 4 GiB) */
+
+static void index_add(uint64_t seq, uint64_t off) {
+    pthread_mutex_lock(&L.ilock);
+    if (L.n_index == 0) L.first_seq = seq;
+    if (seq == L.first_seq + L.n_index && L.n_index < KXL_INDEX_MAX && off <= UINT32_MAX) L_index[L.n_index++] = (uint32_t)off;
+    pthread_mutex_unlock(&L.ilock);
+}
 
 static uint64_t mono_ns(void) {
     struct timespec ts;
@@ -121,6 +136,7 @@ static int load_or_create_key(void) {
     kx_sha256(thumb_in, (size_t)tn, th);
     kx_base64url(th, 32, L.kid);
     int jn = snprintf(jwk, sizeof jwk, "{\"keys\":[{\"alg\":\"EdDSA\",\"crv\":\"Ed25519\",\"kid\":\"%s\",\"kty\":\"OKP\",\"use\":\"sig\",\"x\":\"%s\"}]}\n", L.kid, x);
+    snprintf(L.jwk, sizeof L.jwk, "%s", jwk);
     snprintf(path, sizeof path, "%s/vehicle.jwk.json", L.dir_keys);
     unlink(path);
     if (write_file(path, jwk, (size_t)jn, 0444, 0) != 0) return -1;
@@ -141,6 +157,12 @@ static int recover(void) {
         uint8_t *buf = malloc(size);               /* init-time only */
         if (buf == NULL || pread(L.fd, buf, size, 0) != (ssize_t)size) { free(buf); return -1; }
         valid = kx_ledger_scan(buf, size, &records, &L.last_seq, L.last_id);
+        for (size_t off = 0; off + KX_LEDGER_HDR_LEN <= valid;) {   /* index the valid prefix */
+            kx_ledger_hdr_t h;
+            if (kx_ledger_hdr_decode(buf + off, &h) != 0) break;
+            index_add(h.seq, off);
+            off += KX_LEDGER_HDR_LEN + h.capsule_len + KX_COSE_ENVELOPE_LEN;
+        }
         if (valid < size) {                        /* torn or corrupt tail: move aside, never silently drop */
             char q[340];
             snprintf(q, sizeof q, "%s/quarantine-%02x%02x%02x%02x.bin", L.dir_ledger,
@@ -153,7 +175,11 @@ static int recover(void) {
         free(buf);
     }
     L.have_head = records > 0;
-    if (lseek(L.fd, 0, SEEK_END) == -1) return -1;
+    off_t end = lseek(L.fd, 0, SEEK_END);
+    if (end == -1) return -1;
+    L.end_off = (uint64_t)end;
+    L.rfd = open(L.path_ledger, O_RDONLY);
+    if (L.rfd == -1) return -1;
     printf("kervixd: ledger %s: %" PRIu64 " record(s), last seq %" PRIu64 "\n", L.path_ledger, records, L.last_seq);
     return 0;
 }
@@ -209,6 +235,8 @@ static int write_record(kx_capsule_rec_t *r) {
     SETIOV(&iov[2], env, sizeof env);
     ssize_t want = (ssize_t)(sizeof hdr + (size_t)n + sizeof env);
     if (writev(L.fd, iov, 3) != want) { fprintf(stderr, "kervixd: ledger: write failed: %s\n", strerror(errno)); return -1; }
+    index_add(r->ledger_seq, L.end_off);             /* readable only once it is completely written */
+    L.end_off += (uint64_t)want;
     L.last_seq = r->ledger_seq;
     memcpy(L.last_id, id, 32);
     L.have_head = 1;
@@ -350,4 +378,36 @@ int kxl_open(const kxl_config_t *cfg) {
     kx_hex(L.ctx.epoch_id, 8, eh);
     printf("kervixd: ledger open, epoch %s…, vehicle key kid %s\n", eh, L.kid);
     return 0;
+}
+
+/* ------------------------------------------------------------ read side */
+
+void kxl_info(kxl_info_t *out) {
+    memset(out, 0, sizeof *out);
+    pthread_mutex_lock(&L.ilock);
+    out->records = L.n_index;
+    out->first_seq = L.first_seq;
+    out->last_seq = L.n_index ? L.first_seq + L.n_index - 1 : 0;
+    pthread_mutex_unlock(&L.ilock);
+    snprintf(out->jwk, sizeof out->jwk, "%s", L.jwk);
+}
+
+int kxl_read(uint64_t seq, char *json, size_t cap, uint8_t env[KX_COSE_ENVELOPE_LEN], uint8_t id[32]) {
+    pthread_mutex_lock(&L.ilock);
+    int have = L.n_index && seq >= L.first_seq && seq < L.first_seq + L.n_index;
+    uint64_t off = have ? L_index[seq - L.first_seq] : 0;
+    pthread_mutex_unlock(&L.ilock);
+    if (!have) return -1;
+    uint8_t hdr[KX_LEDGER_HDR_LEN];
+    kx_ledger_hdr_t h;
+    if (pread(L.rfd, hdr, sizeof hdr, (off_t)off) != (ssize_t)sizeof hdr || kx_ledger_hdr_decode(hdr, &h) != 0 || h.seq != seq ||
+        h.capsule_len >= cap)
+        return -1;
+    if (pread(L.rfd, json, h.capsule_len, (off_t)(off + KX_LEDGER_HDR_LEN)) != (ssize_t)h.capsule_len ||
+        pread(L.rfd, env, KX_COSE_ENVELOPE_LEN, (off_t)(off + KX_LEDGER_HDR_LEN + h.capsule_len)) != KX_COSE_ENVELOPE_LEN)
+        return -1;
+    if (!kx_ledger_crc_ok(hdr, &h, json, env)) return -1;  /* the file under us is what was written */
+    json[h.capsule_len] = '\0';
+    memcpy(id, h.capsule_id, 32);
+    return (int)h.capsule_len;
 }

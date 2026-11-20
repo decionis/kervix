@@ -3,6 +3,7 @@
 // time, and report console errors. Uses the DevTools protocol over Node's
 // built-in WebSocket: no extra dependencies.
 //   node tools/screenshot.mjs <url> <out.png> [--wait ms] [--size 1600x1000] [--clip "css selector"] [--scale 2]
+//                             [--eval "js; js" --after ms]   run JS in the page (e.g. clicks) before the capture
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -14,6 +15,8 @@ const wait = Number(opt("--wait", "4000"));
 const [w, h] = opt("--size", "1600x1000").split("x").map(Number);
 const clipSel = opt("--clip", "");
 const scale = Number(opt("--scale", "1"));
+const evalJs = opt("--eval", "");
+const after = Number(opt("--after", "2000"));
 const [url, out] = args;
 if (!url || !out) { console.error("usage: screenshot.mjs <url> <out.png> [--wait ms] [--size WxH]"); process.exit(2); }
 
@@ -45,6 +48,13 @@ await cdp("Page.enable");
 await cdp("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: scale, mobile: false });
 await cdp("Page.navigate", { url });
 await sleep(wait);
+if (evalJs) {
+  for (const step of evalJs.split(";;")) {   // ";;" separates steps; each gets `after` ms to settle
+    const r = await cdp("Runtime.evaluate", { expression: step, awaitPromise: true });
+    if (r.exceptionDetails) errors.push(`--eval: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`);
+    await sleep(after);
+  }
+}
 let clip;
 if (clipSel) {
   const r = await cdp("Runtime.evaluate", { expression: `JSON.stringify((() => { const e = document.querySelector(${JSON.stringify(clipSel)}); if (!e) return null; const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height }; })())`, returnByValue: true });

@@ -44,7 +44,9 @@ export type State = {
   escAt: number;
   feed: FeedEvent[];
   fake: boolean;
+  ledger: LedgerInfo | null;
 };
+export type LedgerInfo = { records: number; first_seq: number; last_seq: number; kid: string | null; policies: string[] };
 
 export const FEED_MAX = 200;
 
@@ -60,6 +62,7 @@ export function initialState(): State {
     escAt: Date.now(),
     feed: [],
     fake: false,
+    ledger: null,
   };
 }
 
@@ -113,6 +116,7 @@ export function reduce(st: State, m: Record<string, unknown>): State {
         escAt: Date.now(),
         feed: ((m.feed as FeedEvent[]) ?? []).slice(-FEED_MAX),
         fake: Object.values(gws).some((g) => g.hello?.fake),
+        ledger: (m.ledger as LedgerInfo) ?? null,
       };
     }
     case "gateway": {
@@ -131,6 +135,8 @@ export function reduce(st: State, m: Record<string, unknown>): State {
       const feed = [...st.feed, m.event as FeedEvent];
       return { ...st, feed: feed.length > FEED_MAX ? feed.slice(-FEED_MAX) : feed };
     }
+    case "ledger":
+      return { ...st, ledger: m.info as LedgerInfo };
     case "disconnected":
       return { ...st, connected: false };
     default:
