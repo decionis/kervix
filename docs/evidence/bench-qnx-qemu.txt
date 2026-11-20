@@ -1,0 +1,22 @@
+kx-bench: QNX 8.0.0 x86pc kervix-qemu, 2 CPU(s)
+          QEMU/TCG: EMULATED, absolute numbers NOT representative (ratios are)
+
+1. PROPOSE, closed loop, 1 client at priority 10 (ALLOW 348, BLOCK 1652)
+  in kervixd (validate, hash, policy, grant, enqueue) n=2000   p50     39.1 us  p99    167.2 us  max   2050.9 us
+  client round trip (MsgSend .. reply)           n=2000   p50     90.1 us  p99    272.4 us  max   2792.9 us
+  652 ALLOWs became BLOCK LEDGER_PRESSURE: the signer fell behind (K3, "no audit, no action")
+  ledger drained in 2.9 s
+
+2. PROPOSE + EXECUTE (grant, redeem with interlock re-check, actuate), closed loop
+  client round trip, propose -> actuated         n=500    p50    524.7 us  p99   1022.4 us  max   3561.0 us
+  500 of 500 attempts executed; 0 held back by K3 (each action is 2 signed capsules)
+
+3. driver HMI round trip (priority 30, own channel) vs an agent PROPOSE flood (priority 10)
+  HMI, authority idle                            n=1390   p50     81.1 us  p99    173.2 us  max    442.6 us
+  HMI, 4 agent threads flooding (16608 proposals/s) n=1425   p50     80.1 us  p99    178.2 us  max    618.9 us
+  HMI p99 under flood / idle: 1.03x   (flood errors: 0)
+
+right after the flood: ledger UNHEALTHY (K3 blocks safety actions)  records 3281 (this boot 3281)  head seq 3281 77ebea9fc07fba52…  queue 1023/1024  dropped 85378  fsyncs 433  kid MN5p0XnVVxYD…  quarantined 0 B
+after 3.8 s:          ledger OK  records 4267 (this boot 4267)  head seq 4267 71a6da0597cf814c…  queue 37/1024  dropped 85378  fsyncs 568  kid MN5p0XnVVxYD…  quarantined 0 B
+{"machine":"x86pc","node":"kervix-qemu","propose_server_us":{"p50":39.1,"p99":167.2,"max":2050.9,"n":2000},"propose_rtt_us":{"p50":90.1,"p99":272.4,"max":2792.9},"propose_execute_us":{"p50":524.7,"p99":1022.4,"max":3561.0,"n":500},"hmi_idle_us":{"p50":81.1,"p99":173.2,"max":442.6},"hmi_flood_us":{"p50":80.1,"p99":178.2,"max":618.9},"flood_threads":4,"flood_per_s":16608}
+no secpol denials during the bench
