@@ -49,7 +49,9 @@ function Wheel({ x, z, spin }: { x: number; z: number; spin: React.RefObject<num
 
 function Door({ x, z, locked, windowPct }: { x: number; z: number; locked: boolean; windowPct: number }) {
   const side = z > 0 ? 1 : -1;
-  const drop = (Math.min(100, Math.max(0, windowPct)) / 100) * 0.42;
+  // the pane retracts into the door: its visible part shrinks from the top
+  const open = Math.min(100, Math.max(0, windowPct)) / 100;
+  const paneH = Math.max(0.001, 0.42 * (1 - open));
   return (
     <group position={[x, 0, z]}>
       <mesh position={[0, 0.68, 0]} castShadow>
@@ -57,8 +59,8 @@ function Door({ x, z, locked, windowPct }: { x: number; z: number; locked: boole
         <meshStandardMaterial color={BODY} metalness={0.4} roughness={0.45} />
       </mesh>
       {/* side window: lowers with the reported position */}
-      <mesh position={[0, 1.26 - drop, -side * 0.08]}>
-        <boxGeometry args={[0.92, 0.42, 0.02]} />
+      <mesh position={[0, 0.99 + paneH / 2, -side * 0.08]} visible={open < 0.99}>
+        <boxGeometry args={[0.92, paneH, 0.02]} />
         <meshStandardMaterial color={GLASS} transparent opacity={0.78} metalness={0.2} roughness={0.05} />
       </mesh>
       {/* lock light on the handle */}
@@ -88,11 +90,11 @@ function Vehicle({ tel }: { tel: Tel | null }) {
     spin.current += (speed / 0.38) * dt;
     if (road.current) road.current.position.x = -((now * speed) % 4);
     const blink = Math.sin(now * 2 * Math.PI * 1.5) > 0;
-    for (const m of hazards.current) if (m) m.emissiveIntensity = t.hazard_on ? (blink ? 3 : 0.1) : 0.4;
+    for (const m of hazards.current) if (m) m.emissiveIntensity = t.hazard_on ? (blink ? 3.2 : 1.2) : 0.4;
     if (body.current) body.current.emissiveIntensity = flashing ? 0.35 + 0.35 * Math.sin(now * 6) : 0;
     if (halo.current) {
       halo.current.visible = flashing;
-      halo.current.rotation.y = now * 1.5;
+      halo.current.rotation.z = now * 1.5; // in-plane spin (x is already -PI/2: lying flat)
     }
     if (charge.current) charge.current.emissiveIntensity = t.charging ? 1.2 + Math.sin(now * 3) : 0;
     if (beacon.current) {
@@ -146,7 +148,7 @@ function Vehicle({ tel }: { tel: Tel | null }) {
       {[1, -1].map((s, i) => (
         <mesh key={s} position={[s * 2.21, 0.78, 0]}>
           <boxGeometry args={[0.04, 0.1, 1.5]} />
-          <meshStandardMaterial ref={(m) => { if (m) hazards.current[i] = m; }} color={s > 0 ? "#e8e6df" : "#7a1d1d"} emissive={t.hazard_on ? AMBER : s > 0 ? "#e8e6df" : STATUS_CRITICAL} emissiveIntensity={0.4} />
+          <meshStandardMaterial ref={(m) => { if (m) hazards.current[i] = m; }} color={t.hazard_on ? AMBER : s > 0 ? "#e8e6df" : "#7a1d1d"} emissive={t.hazard_on ? AMBER : s > 0 ? "#e8e6df" : STATUS_CRITICAL} emissiveIntensity={0.4} />
         </mesh>
       ))}
 
@@ -157,7 +159,7 @@ function Vehicle({ tel }: { tel: Tel | null }) {
       </mesh>
 
       {/* OTA flashing halo */}
-      <mesh ref={halo} position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
+      <mesh ref={halo} position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]} visible={flashing}>
         <ringGeometry args={[2.6, 2.75, 64, 1, 0, Math.PI * 1.6]} />
         <meshBasicMaterial color={BLUE} transparent opacity={0.85} />
       </mesh>
@@ -169,7 +171,7 @@ function Vehicle({ tel }: { tel: Tel | null }) {
         </mesh>
       )}
       {/* location sharing beacon */}
-      <mesh ref={beacon} position={[-0.3, 1.52, 0]} visible={false}>
+      <mesh ref={beacon} position={[-0.3, 1.52, 0]} visible={t.location_shared === 1}>
         <torusGeometry args={[0.12, 0.012, 8, 32]} />
         <meshBasicMaterial color={BLUE} transparent opacity={0.8} />
       </mesh>

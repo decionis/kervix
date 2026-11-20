@@ -2,7 +2,7 @@
 // Screenshot a page with the local Chrome (GPU on, so WebGL renders), in real
 // time, and report console errors. Uses the DevTools protocol over Node's
 // built-in WebSocket: no extra dependencies.
-//   node tools/screenshot.mjs <url> <out.png> [--wait ms] [--size 1600x1000]
+//   node tools/screenshot.mjs <url> <out.png> [--wait ms] [--size 1600x1000] [--clip "css selector"] [--scale 2]
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -12,6 +12,8 @@ const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args.splice(i, 2)[1] : d; };
 const wait = Number(opt("--wait", "4000"));
 const [w, h] = opt("--size", "1600x1000").split("x").map(Number);
+const clipSel = opt("--clip", "");
+const scale = Number(opt("--scale", "1"));
 const [url, out] = args;
 if (!url || !out) { console.error("usage: screenshot.mjs <url> <out.png> [--wait ms] [--size WxH]"); process.exit(2); }
 
@@ -40,10 +42,17 @@ ws.addEventListener("message", (ev) => {
 const cdp = (method, params = {}) => new Promise((r) => { const id = ++n; waiting.set(id, r); ws.send(JSON.stringify({ id, method, params })); });
 await cdp("Runtime.enable");
 await cdp("Page.enable");
-await cdp("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+await cdp("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: scale, mobile: false });
 await cdp("Page.navigate", { url });
 await sleep(wait);
-const shot = await cdp("Page.captureScreenshot", { format: "png" });
+let clip;
+if (clipSel) {
+  const r = await cdp("Runtime.evaluate", { expression: `JSON.stringify((() => { const e = document.querySelector(${JSON.stringify(clipSel)}); if (!e) return null; const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height }; })())`, returnByValue: true });
+  const box = JSON.parse(r.result.value ?? "null");
+  if (!box) errors.push(`--clip: no element matches ${clipSel}`);
+  else clip = { ...box, scale: 1 };
+}
+const shot = await cdp("Page.captureScreenshot", clip ? { format: "png", clip } : { format: "png" });
 fs.writeFileSync(out, Buffer.from(shot.data, "base64"));
 ws.close();
 const exited = new Promise((r) => proc.once("exit", r));
