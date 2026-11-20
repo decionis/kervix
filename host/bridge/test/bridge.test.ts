@@ -105,6 +105,16 @@ test("notes from the agent reach the feed", async () => {
   assert.equal(last.msg.text, "I will propose a door unlock");
 });
 
+test("authority up/down follows the observer's stats stream (fail-closed banner)", async () => {
+  await until(() => bridge.authority.up === true);
+  target.authorityDown = true;
+  await until(() => wsMsgs.some((m) => m.type === "authority" && m.up === false));
+  assert.equal(bridge.authority.up, false);
+  target.authorityDown = false;
+  await until(() => bridge.authority.up === true);
+  assert.equal((bridge.snapshot().authority as { up: boolean }).up, true);
+});
+
 test("gateway client: reconnects, splits lines, rejects pending requests on loss", async () => {
   const got: GwMsg[] = [];
   const feed = lineReader((m) => got.push(m), () => got.push({ kind: "BAD" }));
