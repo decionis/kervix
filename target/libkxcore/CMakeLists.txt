@@ -9,5 +9,7 @@ add_library(kxcore STATIC
   src/jcs.c
   src/intent.c
   src/grant.c
+  src/cose.c
+  src/capsule.c
 )
 target_include_directories(kxcore PUBLIC ${PROJECT_SOURCE_DIR}/target/include)
