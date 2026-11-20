@@ -27,6 +27,7 @@ add_compile_options(-Wall -Wextra -Werror -Wshadow -Wstrict-prototypes -Wpointer
 add_subdirectory(target/libkxcore)
 
 if(KX_QNX)
+  add_subdirectory(spikes/s1-secpol)
   # On-target components are added as they are implemented (M1+):
   # add_subdirectory(target/vsimd)
   # add_subdirectory(target/kervixd)

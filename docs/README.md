@@ -17,7 +17,7 @@ QNX Global Hackathon (Devpost) · Category **Automotive & Mobility** · Bonus ta
 
 ## Most important changes from the brief
 
-1. **"Kernel boundary" made true.** QNX **secpol** types each Kervix channel. An agent-type process gets `EACCES` from `procnto` when it tries to reach actuators or the redeem path. Kervix decides *policy*; the kernel enforces *topology*.
+1. **"Kernel boundary" made true.** QNX **secpol** types each Kervix channel. An agent-type process gets `EPERM` from `procnto` when it tries to reach actuators or the redeem path. Kervix decides *policy*; the kernel enforces *topology*.
 2. **Proof is compatible with `@decionis/verify`.** The brief's SHA-256 chain would not verify with it. The design uses **Agent-Safe Intent v1** + **AAC draft-04** capsules + **Ed25519 COSE_Sign1** envelopes.
 3. **Grants are checked again at execution.** An interlock re-check at redemption closes the TOCTOU window.
 4. **Fail-closed everywhere**: stale telemetry, crashed authority, full audit queue, escalation timeout.

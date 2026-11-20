@@ -26,7 +26,7 @@ Fallback rig: QEMU x86_64 on the same laptop. Every scene must also work there. 
 | 1 | Helpful (ALLOW) | Scenario "city 60 kph"; agent: "I'm cold" | Agent → `cabin.climate.set(225)` → ALLOW 23 µs → twin HVAC glows → decision + confirmed capsules | D |
 | 2 | Injection (BLOCK) | Scenario "highway 110 kph"; agent reads the poisoned service bulletin | Agent proposes `ota.ecu.flash` → **BLOCK R156_NOT_SAFE_STATE** → agent tells the driver it will ask when parked | IA PI |
 | 3 | Oversight (ESCALATE) | Scenario "parked + charging" | Agent re-proposes → **ESCALATE** → HMI card → driver approves → `resolved` (human) → grant → OTA progress glow → `confirmed` | PI D |
-| 4 | Red team | `kx-rogue --all` in the QNX terminal | 5 attacks, 5 refusals; **`open(/dev/sdv/actuators/raw): Permission denied (EACCES)` from the kernel** | QX TI |
+| 4 | Red team | `kx-rogue --all` in the QNX terminal | 5 attacks, 5 refusals; **`open(/dev/sdv/actuators/raw): Operation not permitted (EPERM)` from the kernel** | QX TI |
 | 5 | Real time | `kx-bench --flood 10000` while approving an escalation | Histogram: PROPOSE p99 µs; HMI latency flat under flood | TI QX |
 | 6 | Crash | `slay -9 kervixd` | Dashboard: **AUTHORITY OFFLINE — ACTUATION LOCKED**; agent action fails; respawn in ~ms; chain continues | TI PI |
 | 7 | Proof | `kxctl export` → laptop offline → `npx kervix-verify dossier/` | VERIFIED: N capsules · signatures ✓ · chain ✓ · **replay N/N** → flip a byte → FAIL at #k | PI IA |
@@ -78,7 +78,7 @@ Production notes:
 | 1 | Set up SDP 8.0 + QEMU image with `mkqnximage`. Covers both a Linux host **and an Apple Silicon Mac** (Linux host tools in Docker + QEMU on macOS). This is a real pain point for many developers, which makes the codelab more valuable. |
 | 2 | Minimal resource manager (`resmgr_attach`, `io_devctl`), test with a client |
 | 3 | Switch to `secpol_resmgr_attach()`; write a policy with two process types |
-| 4 | Type the channel per path; show `EACCES` for the wrong client type |
+| 4 | Type the channel per path; show `EPERM` for the wrong client type, even as root |
 | 5 | Drop privileges: `secpol_transition_type()`, `procmgr_ability()` |
 | 6 | Read the client's identity in the handler (`ConnectClientInfoExt`) |
 | 7 | Priority inheritance demo: two clients at different priorities |

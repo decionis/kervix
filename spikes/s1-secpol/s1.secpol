@@ -1,0 +1,23 @@
+# Spike S1 policy: one resource manager, two paths, two channel types.
+# The kernel (procnto) enforces who may connect to which channel type.
+
+type s1_server_t;
+type s1_server_run_t;     # after secpol_transition_type(): post-init type
+type s1_agent_t;          # stands in for the AI-facing gateway (untrusted)
+type s1_actuator_t;       # stands in for sdv_actuatord (trusted)
+type kxs1_open_ch_t;      # channel behind /dev/kxs1/open
+type kxs1_priv_ch_t;      # channel behind /dev/kxs1/priv
+
+# Only the server may attach these paths; the trailing type types the channel.
+allow_attach s1_server_t /dev/kxs1/open kxs1_open_ch_t;
+allow_attach s1_server_t /dev/kxs1/priv kxs1_priv_ch_t;
+
+# Privilege drop after init.
+derive_type s1_server_t run s1_server_run_t;
+
+# Topology: agents reach only the open channel; actuators reach both.
+allow { s1_agent_t s1_actuator_t } kxs1_open_ch_t:channel connect;
+allow s1_actuator_t kxs1_priv_ch_t:channel connect;
+
+# Allow the one-way privilege drop requested by secpol_transition_type().
+allow s1_server_t self:ability { settypeid:s1_server_run_t };
