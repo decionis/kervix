@@ -74,6 +74,8 @@ cmd_scp()  {
 }
 cmd_stop() {
   running || { echo "not running"; rm -f "$PIDFILE"; return 0; }
+  # qnx6 commits lazily: flush the guest first or recent writes are lost
+  ssh "${SSH_OPTS[@]}" root@127.0.0.1 sync 2>/dev/null || true
   kill "$(cat "$PIDFILE")" && rm -f "$PIDFILE" && echo "stopped"
 }
 cmd_status()  { running && echo "running (pid $(cat "$PIDFILE"))" || echo "stopped"; }
