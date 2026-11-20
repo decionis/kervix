@@ -1,15 +1,21 @@
 # Progress log
 
-One entry per day: done / slipped / cut. Plan: `04-implementation-plan.md`.
+One entry per milestone step: done / slipped / cut. Plan: `04-implementation-plan.md`. PR numbers refer to github.com/decionis/kervix.
 
-| Date | Milestone | Done | Slipped / blocked | Cut |
+> Correction (2026-11-20): earlier versions of this log dated some entries "Sat 2026-11-21". All work below happened on **Fri 2026-11-20**, as the PR merge timestamps confirm.
+
+| Date | Milestone | Done (PR) | Slipped / blocked | Cut |
 |---|---|---|---|---|
-| Fri 2026-11-20 | M0 | Design approved. Repo scaffold (Apache-2.0, CMake, toolchain files, Docker build container, Makefile, host CI). `catalog/catalog.yaml` + codegen (C header/tables, TS, strict tool schemas). libkxcore host build + catalog tests green. **Spike S5 PASSED** (AAC mapping frozen). | **S0 blocked on you:** myQNX account + license + SDP 8.0 + Linux host tools via Software Center; Docker Desktop not running; RPi4 not yet ordered. | — |
-| Fri 2026-11-20 (pm) | M0/S0 | QEMU 11.1.3 installed (you). myQNX account created (you). Headless SDP installer flow written (`docker/install-sdp.sh` → Linux Software Center CLI → volume `kervix-qnx-home`); `qnx-build.sh` uses the volume. | Docker Desktop engine unresponsive (VM stuck idle) and needs a restart. SDP install needs your credentials in your own terminal. | — |
-| Fri 2026-11-20 (eve) | M1 (early) | `libkxcore` policy engine: ABI v1 structs, pure `kx_eval` with constitution K1–K4, OR-groups, ABSDIFF, interlock re-check, policy builder/finalizer; `policies/default.yaml` (22 rules) mirrored in C; 150 checks + 200k-case property sweep; clean under ASan/UBSan. | — | — |
-| Fri 2026-11-20 (late) | M0 | SDP 8.0 installed and license activated (you, plus PR #2). **S0 + S6 PASSED**: cross-builds for x86_64 + aarch64le; QNX 8.0 boots in QEMU on the Mac in ~15 s; libkxcore tests pass **on QNX**. `scripts/qemu.sh`, `make target-test`. | RPi4 still to order. | — |
-| Fri 2026-11-20 (night) | M0 | **S1 + S2 PASSED**: kernel-enforced per-path channel typing proven on QNX 8.0 (agent → actuator channel = `EPERM` even as root; squatting blocked; privilege drop; registered pulses). Client type from `ctp->info.type_id`. Reproducible via `spikes/s1-secpol/run.sh` (8/8). Architecture §3.1 rewritten with verified grammar. | — | — |
-| Sat 2026-11-21 (early) | M1 (ahead) | `libkxcore`: SHA-256/HMAC (NIST + RFC 4231 vectors), bounded JCS writer, Agent-Safe Intent v1 binding + hash; K4 now requires an RFC 4122 intent id and a printable-ASCII actor. **Intent parity: C output is byte-identical to `@decionis/verify`** (6 vectors, in CI). | Docker Desktop engine crashed twice (Resource Saver/backend hang), so the on-QNX run of the new tests is pending a Docker restart. S3 not started. | — |
-| Sat 2026-11-21 | M0 | Docker restarted (Resource Saver off). PR #5 verified **on QNX** (4 suites; QNX `--emit` byte-identical to host and passes `@decionis/verify` directly). `qemu.sh stop` now syncs the guest. **S3 PASSED**: qcrypto reproduces the pinned COSE_Sign1 signature byte-for-byte; DRBG and keygen OK. Monocypher fallback dropped. | — | — |
-| Sat 2026-11-21 | **M0 ✅** | **S4 PASSED**: services baked into the image and started at boot with per-role secpol type + priority; host ⇄ gateways over 7301–7303. **All M0 spikes (S0–S6) done**, ahead of the Sun 11-22 plan. | RPi4 still to order. | — |
-| Sat 2026-11-21 | M1 | **Grant table** (`kervix/grant.h`): single-use, MAC-authenticated (per-boot key, domain-separated, compile-time proof that every field is covered), proposer-bound, exact-command, interlock re-check; every failed redemption burns the grant. 68 checks + 100k-op never-twice sweep; ASan caught an 8-byte MAC-buffer overflow before merge. Passes on QNX. | S4 landed in a stale branch (#7); re-landed as #8 (merged). | — |
+| Fri 2026-11-20 | M0 | Design approved. Repo scaffold, catalog + codegen, host CI. **S5** AAC/COSE mapping proven against `@decionis/verify`. | — | — |
+| Fri 2026-11-20 | M0 | Headless SDP install into a Docker volume (macOS M1 host). SDP 8.0 + license (#2). **S0 + S6**: cross-build x86_64/aarch64le, QNX boots in QEMU on the Mac in ~15 s, core tests pass on QNX (#3). | Docker Desktop engine crashed twice; fixed by restart + Resource Saver off | — |
+| Fri 2026-11-20 | M0 | **S1 + S2**: kernel-enforced per-path channel typing (`EPERM` even as root), client type from `ctp->info.type_id` (#4). **S3**: qcrypto Ed25519 reproduces the pinned COSE_Sign1 vector; Monocypher fallback dropped (#6). **S4**: boot-time services with per-role secpol type + priority (#7 merged into a stale branch, re-landed as #8). **M0 ✅** | — | — |
+| Fri 2026-11-20 | M1 | `libkxcore`: policy engine + constitution K1–K4 (#1); SHA-256/HMAC, JCS, Agent-Safe Intent hashing byte-identical to `@decionis/verify` (#5); grant table (#9). | — | — |
+| Fri 2026-11-20 | M1 | `vsimd` 100 Hz simulator + seqlock telemetry + `kxctl` (#10): 16/16 on QNX. | — | — |
+| Fri 2026-11-20 | M1 | `kervixd` + `sdv_actuatord` end to end, propose → grant → redeem → actuate (#11): **M1 acceptance 16/16 on QNX**. Found + fixed: reaped grants reported SPENT instead of EXPIRED. | — | — |
+| Fri 2026-11-20 | **M1 ✅** | Driver escalation: queue, deferred-reply AWAIT, approve/deny/timeout, re-evaluation on approval (#12): 13/13 on QNX. Found + fixed: an agent blocked in AWAIT could not be interrupted (unblock pulses). | RPi4 not yet ordered: **main schedule risk** (benchmarks + on-device video) | — |
+
+## Schedule status (end of Fri 2026-11-20)
+
+- Plan: M0 by Sun 11-22, M1 by Fri 11-27. **Actual: M0 and M1 both complete on Fri 11-20, about 7 days ahead.**
+- Next: M2. The signed AAC capsule ledger (Ed25519 via qcrypto, crash-safe append-only file, epoch capsules), `kervix-verify` on top of `@decionis/verify`, then the `--secpol=secure` image with every Kervix channel typed.
+- The buffer gained should go into M3 polish (3D dashboard, live Claude agent) and RPi4 benchmarking once the hardware arrives.
