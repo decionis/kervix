@@ -4,5 +4,8 @@
 add_library(kxcore STATIC
   src/catalog_gen.c
   src/policy.c
+  src/sha256.c
+  src/jcs.c
+  src/intent.c
 )
 target_include_directories(kxcore PUBLIC ${PROJECT_SOURCE_DIR}/target/include)

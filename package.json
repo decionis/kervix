@@ -10,11 +10,13 @@
   "workspaces": [
     "tools/*",
     "host/*",
-    "spikes/*"
+    "spikes/*",
+    "tests/*"
   ],
   "scripts": {
     "codegen": "node tools/codegen/codegen.mjs",
     "codegen:check": "node tools/codegen/codegen.mjs --check",
-    "spike:s5": "npm run -w spikes/s5-aac start"
+    "spike:s5": "npm run -w spikes/s5-aac start",
+    "conformance": "npm run -s -w tests/conformance intent"
   }
 }

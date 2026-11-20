@@ -49,6 +49,9 @@ static kx_intent_t intent(uint16_t action) {
     in.abi = KX_ABI_VERSION;
     in.action = action;
     strcpy(in.actor_id, "agent:cabin-copilot");
+    static const uint8_t uuid[16] = { 0x0b, 0x6c, 0x1e, 0x2a, 0x7f, 0x3d, 0x4a, 0x9b,
+                                      0x8c, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01 };
+    memcpy(in.intent_id, uuid, sizeof uuid);
     return in;
 }
 static void add(kx_intent_t *in, uint16_t key, int64_t v) {
@@ -286,7 +289,22 @@ static void test_validation(void) {
     ev(&in, &t);
     EXPECT(KX_VERDICT_BLOCK, KX_R_PARAM_INVALID, KX_GATE_K4_VALIDATION);
 
-    in.abi = KX_ABI_VERSION; /* actor id must be NUL-terminated and non-empty */
+    in.abi = KX_ABI_VERSION; /* intent id must be an RFC 4122 UUID */
+    in.intent_id[6] = 0x0b;   /* version 0 */
+    ev(&in, &t);
+    EXPECT(KX_VERDICT_BLOCK, KX_R_PARAM_INVALID, KX_GATE_K4_VALIDATION);
+    in.intent_id[6] = 0x4b;
+    in.intent_id[8] = 0x0c;   /* NCS variant */
+    ev(&in, &t);
+    EXPECT(KX_VERDICT_BLOCK, KX_R_PARAM_INVALID, KX_GATE_K4_VALIDATION);
+    in.intent_id[8] = 0x8c;
+    strcpy(in.actor_id, "agent:\x7f");  /* DEL is not printable */
+    ev(&in, &t);
+    EXPECT(KX_VERDICT_BLOCK, KX_R_PARAM_INVALID, KX_GATE_K4_VALIDATION);
+    strcpy(in.actor_id, "agent:ok");
+    ev(&in, &t);
+    EXPECT(KX_VERDICT_ALLOW, KX_R_OK, KX_GATE_NONE);
+    /* actor id must be NUL-terminated and non-empty */
     memset(in.actor_id, 'x', KX_ACTOR_LEN);
     ev(&in, &t);
     EXPECT(KX_VERDICT_BLOCK, KX_R_PARAM_INVALID, KX_GATE_K4_VALIDATION);
