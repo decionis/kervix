@@ -23,10 +23,13 @@
  *   kxctl escalations               pending driver decisions (the HMI's view)
  *   kxctl approve <id> [--as NAME]  driver approves (re-evaluated on live telemetry first)
  *   kxctl deny <id> [--as NAME]     driver denies
+ *   kxctl policy status             active policy: id, version, hash, source (built-in or signed bundle)
+ *   kxctl policy load <file.kxp>    upload a signed bundle and activate it (author + approver, trusted keys)
  *
  * Exit status: 0 ok/ALLOW/executed, 1 check failed or execution refused,
  *              2 usage/IO error, 3 ESCALATE, 4 BLOCK.
  */
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -39,6 +42,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "kervix/bundle.h"
 #include "kervix/cose.h"
 #include "kervix/kervix_abi.h"
 #include "kervix/ledger.h"
@@ -526,12 +530,39 @@ static int cmd_dossier(int argc, char **argv) {
     char hc[65], he[65], hj[65], head[65];
     sha256_file(pc, hc); sha256_file(pe, he); sha256_file(pj, hj);
     kx_hex(x.head, 32, head);
+    /* every signed policy that was ever activated (archived by kervixd as policy/<hash16>.kxp):
+     * the verifier replays each decision under the policy it records */
+    char policies[2048] = "";
+    size_t pl = 0;
+    int npol = 0;
+    DIR *dp = opendir(KX_DATADIR "/policy");
+    struct dirent *de;
+    while (dp && (de = readdir(dp)) != NULL) {
+        const char *nm = de->d_name;
+        if (strlen(nm) != 20 || strcmp(nm + 16, ".kxp") != 0 || strspn(nm, "0123456789abcdef") != 16) continue;
+        char src[300], dst[600], hp[65];
+        snprintf(src, sizeof src, KX_DATADIR "/policy/%s", nm);
+        snprintf(dst, sizeof dst, "%s/policies", dir);
+        mkdir(dst, 0755);
+        snprintf(dst, sizeof dst, "%s/policies/%s", dir, nm);
+        static uint8_t bb[KX_BUNDLE_MAX];
+        FILE *fi = fopen(src, "rb"), *fo = fopen(dst, "wb");
+        size_t bn = fi ? fread(bb, 1, sizeof bb, fi) : 0;
+        int ok = fo && bn > 0 && fwrite(bb, 1, bn, fo) == bn;
+        if (fi) fclose(fi);
+        if (fo) fclose(fo);
+        if (!ok || sha256_file(dst, hp) != 0) { fprintf(stderr, "kxctl: cannot export %s\n", src); continue; }
+        if (pl < sizeof policies) pl += (size_t)snprintf(policies + pl, sizeof policies - pl, ",\"policies/%s\":\"sha256:%s\"", nm, hp);
+        npol++;
+    }
+    if (dp) closedir(dp);
     FILE *mf = fopen(pm, "wb");
     if (!mf) return 2;
-    fprintf(mf, "{\"files\":{\"capsules.jsonl\":\"sha256:%s\",\"envelopes.txt\":\"sha256:%s\",\"vehicle.jwk.json\":\"sha256:%s\"},"
+    fprintf(mf, "{\"files\":{\"capsules.jsonl\":\"sha256:%s\",\"envelopes.txt\":\"sha256:%s\"%s,\"vehicle.jwk.json\":\"sha256:%s\"},"
                 "\"first_seq\":%llu,\"format\":\"kervix.dossier/1\",\"head_capsule_id\":\"%s\",\"last_seq\":%llu,\"records\":%llu}\n",
-            hc, he, hj, (unsigned long long)x.first, head, (unsigned long long)x.last, (unsigned long long)count);
+            hc, he, policies, hj, (unsigned long long)x.first, head, (unsigned long long)x.last, (unsigned long long)count);
     fclose(mf);
+    if (npol) printf("exported %d signed policy bundle(s)\n", npol);
     printf("exported %llu capsule(s) (seq %llu..%llu, head %.16s…) to %s\n", (unsigned long long)count,
            (unsigned long long)x.first, (unsigned long long)x.last, head, dir);
     return 0;
@@ -549,6 +580,45 @@ static int cmd_stats(void) {
     return 0;
 }
 
+static void print_policy(const kx_policy_status_t *st) {
+    char h[65];
+    kx_hex(st->hash, 32, h);
+    printf("policy   %s v%u.%u.%u\n         hash sha256:%s\n         source %s\n", st->policy_id, st->version >> 16,
+           (st->version >> 8) & 0xff, st->version & 0xff, h, st->source);
+}
+
+static int cmd_policy(int argc, char **argv) {
+    int fd = open(KX_PATH_POLICY, O_RDWR);
+    if (fd == -1) { fprintf(stderr, "kxctl: %s: %s\n", KX_PATH_POLICY, strerror(errno)); return 2; }
+    kx_policy_status_t st;
+    memset(&st, 0, sizeof st);
+    if (argc == 1 && !strcmp(argv[0], "status")) {
+        int rc = devctl(fd, KX_DCMD_POLICY_STATUS, &st, sizeof st, NULL);
+        close(fd);
+        if (rc != EOK) { fprintf(stderr, "kxctl: policy status: %s\n", strerror(rc)); return 2; }
+        print_policy(&st);
+        return 0;
+    }
+    if (argc != 2 || strcmp(argv[0], "load")) { close(fd); return usage(); }
+    FILE *f = fopen(argv[1], "rb");
+    static uint8_t buf[KX_BUNDLE_MAX];
+    size_t n = f ? fread(buf, 1, sizeof buf, f) : 0;
+    if (f) fclose(f);
+    if (n == 0) { close(fd); fprintf(stderr, "kxctl: %s: cannot read\n", argv[1]); return 2; }
+    if (write(fd, buf, n) != (ssize_t)n) { close(fd); perror("kxctl: upload"); return 2; }
+    int rc = devctl(fd, KX_DCMD_POLICY_ACTIVATE, &st, sizeof st, NULL);
+    close(fd);
+    if (rc != EOK) { fprintf(stderr, "kxctl: activate: %s\n", strerror(rc)); return 2; }
+    if (st.result != 0) {
+        printf("REFUSED  %s (%s)\n", st.detail, strerror(st.result));
+        print_policy(&st);
+        return 1;
+    }
+    printf("ACTIVATED\n");
+    print_policy(&st);
+    return 0;
+}
+
 static int usage(void) {
     fprintf(stderr, "usage:\n  kxctl telemetry [--watch <seconds>]\n  kxctl sim <command...>   (kxctl sim help)\n"
                     "  kxctl sim-apply <action> [key=value...]\n"
@@ -556,7 +626,7 @@ static int usage(void) {
                     "                <action> [key=value...]\n"
                     "  kxctl execute --grant F\n  kxctl stats\n"
                     "  kxctl escalations | approve <id> [--as NAME] | deny <id> [--as NAME]\n"
-                    "  kxctl dossier export <dir> | dossier tail [N]\n");
+                    "  kxctl dossier export <dir> | dossier tail [N]\n  kxctl policy status | policy load <file.kxp>\n");
     return 2;
 }
 
@@ -578,5 +648,6 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[1], "await") && argc == 3) return cmd_await(argv[2]);
     if (!strcmp(argv[1], "approve") && argc >= 3) return cmd_resolve(argc - 2, argv + 2, 1);
     if (!strcmp(argv[1], "deny") && argc >= 3) return cmd_resolve(argc - 2, argv + 2, 0);
+    if (!strcmp(argv[1], "policy") && argc >= 3) return cmd_policy(argc - 2, argv + 2);
     return usage();
 }

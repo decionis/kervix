@@ -33,3 +33,7 @@ add_executable(test_policy_load test_policy_load.c)
 target_link_libraries(test_policy_load PRIVATE kxcore)
 target_compile_definitions(test_policy_load PRIVATE KX_FIXTURE_DIR="${PROJECT_SOURCE_DIR}/tests/fixtures")
 add_test(NAME policy_load COMMAND test_policy_load)
+
+add_executable(test_bundle test_bundle.c)
+target_link_libraries(test_bundle PRIVATE kxcore)
+add_test(NAME bundle COMMAND test_bundle)

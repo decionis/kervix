@@ -156,6 +156,10 @@ static void build_stream(void) {
     push(decision(&bad, &p, 1), KX_REL_FOLLOWS, 17, -1);                              /* 18 BLOCK K4 (recorded as received) */
     memset(&e, 0, sizeof e); e.event = KX_EV_EPOCH; e.reason = KX_R_AUTHORITY_EPOCH; e.quarantined_bytes = 117; e.restart = 2; memcpy(e.restart_cause, "SIGKILL", 8);
     push(e, KX_REL_EPOCH_OPENS, 18, -1);                                              /* 19 restart epoch */
+    memset(&e, 0, sizeof e); e.event = KX_EV_POLICY; e.reason = KX_R_POLICY_ACTIVATED; e.human = 1;
+    memcpy(e.prev_policy_hash, POL.hash, 32); memset(e.policy_hash, 0xb2, 32);
+    strcpy(e.approver, "author:policy-team approver:safety-board");
+    push(e, KX_REL_FOLLOWS, 19, -1);                                                  /* 20 signed policy activated */
 }
 
 static kx_capsule_ctx_t ctx(void) {
@@ -275,6 +279,11 @@ static void test_capsules(void) {
     KX_CHECK(strstr(JSON[0], "\"recovery\"") == NULL);                    /* first start: no recovery */
     KX_CHECK(strstr(JSON[12], "\"verdict_class\":\"denied\"") && strstr(JSON[14], "\"verdict_class\":\"expired\""));
     KX_CHECK(strstr(JSON[0], "\"ledger_mode\":\"standalone\"") && strstr(JSON[0], "\"chain\"") == NULL);
+    /* policy activation: fyi, approved by humans (author + approver), authority = the NEW policy */
+    KX_CHECK(strstr(JSON[20], "\"action_id\":\"policy:b2b2b2b2b2b2b2b2\"") && strstr(JSON[20], "\"action_type\":\"fyi\""));
+    KX_CHECK(strstr(JSON[20], "\"approver\":\"human\"") && strstr(JSON[20], "\"verdict_class\":\"resolved\"") && strstr(JSON[20], "\"human_disposed\":true"));
+    KX_CHECK(strstr(JSON[20], "\"authority\":\"sha256:b2b2") && strstr(JSON[20], "\"previous_policy_hash\":\"sha256:8539d711"));
+    KX_CHECK(strstr(JSON[20], "\"event\":\"policy_activated\"") && strstr(JSON[20], "\"reason\":\"POLICY_ACTIVATED\""));
 
     /* REPLAY: every recorded decision reproduces bit-for-bit from its evidence */
     int decisions = 0;

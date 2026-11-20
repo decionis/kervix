@@ -192,7 +192,7 @@ typedef struct {
 | `/dev/kervix/redeem` | `KX_DCMD_REDEEM` (in grant + exact command + client info of executor; out ok/err) | actuatord only | Atomic: MAC ✓ → outstanding ✓ → not expired ✓ → params digest ✓ → proposer binding ✓ → **interlock re-check** ✓ → mark spent → reply |
 | `/dev/kervix/redeem` | `KX_DCMD_EFFECT` (grant_id, result, response digest) | actuatord | Writes the `confirmed`/`failed` effect capsule |
 | `/dev/kervix/escalations` | `read()` (text list), `ionotify` (new item), `KX_DCMD_RESOLVE` (id, approve/deny, approver id) | hmi gw, kxctl | Human disposition → resolution capsule → on approve: re-evaluate the interlock and issue a grant to the waiting AWAIT caller |
-| `/dev/kervix/policy` | `write()` signed bundle; `KX_DCMD_POLICY_ACTIVATE` | kxctl (operator) | Verify both signatures → atomic swap (RCU-style pointer swap between evaluations) → `policy_change` capsule |
+| `/dev/kervix/policy` | `write()` signed bundle; `KX_DCMD_POLICY_ACTIVATE`, `KX_DCMD_POLICY_STATUS` | kxctl (operator only: its own channel type `kx_admin_ch_t`) | **Implemented.** Verify both signatures (qcrypto Ed25519) against the vehicle's trust file → load (C loader) → refuse while grants/escalations are in flight (`EBUSY`) → persist → swap under the decision lock → signed `policy_activated` capsule |
 | `/dev/kervix/dossier` | `read()` streams JSONL capsules; `KX_DCMD_HEAD` | observer, kxctl | `cat /dev/kervix/dossier` works: "everything is a file" UX |
 | `/dev/kervix/stats` | `read()` text: counters + latency histogram | anyone on ch_agent | `cat /dev/kervix/stats` |
 | `/dev/sdv/actuators` | `KX_DCMD_EXECUTE` (grant + command) | agent gw | actuatord → REDEEM → apply via `/dev/sdv/sim/actuate` → EFFECT |
@@ -336,6 +336,22 @@ The **`kxpolicy` compiler** (host, TypeScript):
   - `kxpolicy keygen | author | approve | verify --trust` implement the acceptance rule the vehicle will apply: both roles present, different keys, each trusted for its own role, both valid.
 - **`kxpolicy test`:** YAML fixtures evaluated by **the vehicle's C core (WASM)** on the compiled policy. `policies/tests/default.yaml` covers all 22 rules and K1–K4 (28/28), and lists any rule no fixture reaches.
 - **Lesson:** an unquoted comma inside a YAML flow list splits a predicate (`[ absdiff(a, b) > 20 ]`). The shipped policy had one. The compiler now names it, and the policy quotes it.
+
+**Implemented (M3, vehicle half; `tests/target/policy.sh`, `make target-policy`: 15/15 on QNX 8.0):**
+- **Upload and activation:** the operator `write()`s a `.kxp` to `/dev/kervix/policy`, on its own channel type `kx_admin_ch_t`, which the agent and HMI types cannot connect to. `POLICY_ACTIVATE` then runs these steps:
+  1. Parses the bundle (`kervix/bundle.h`, portable).
+  2. Checks both signatures with **qcrypto Ed25519** against `<datadir>/policy/trust`: both roles present, different keys, each trusted *for its role*.
+  3. Loads the body with `kx_policy_load`.
+  4. Refuses with `EBUSY` while any grant, escalation or effect is in flight, because those refer to rule indices of the *current* policy.
+  5. Requires ledger room ("no audit, no action").
+  6. Persists the bundle (`policy/<hash16>.kxp` and `active.kxp`, written to a temp file, fsynced and renamed).
+  7. Swaps the policy under the decision lock.
+  8. Records a signed **`policy_activated`** capsule (`fyi`, `approver: human`, `resolved`), naming the author and approver labels and the previous and new policy hashes.
+- **At every start** the active bundle is **re-verified**. If it no longer passes, for example because a key was removed from the trust file, kervixd logs it and runs the built-in policy.
+- **Export and offline verification:**
+  - `kxctl dossier export` ships every archived bundle in `policies/`, listed in the manifest.
+  - `kervix-verify` checks each bundle's two signatures, loads it with the vehicle's C core (WASM), and **replays every decision under the policy that decision records**.
+  - A decision under a policy the dossier lacks, or an activation without its bundle, now **fails** verification. Before, such a decision was silently skipped.
 
 ## 8. Proof: intents, capsules, envelopes, ledger
 

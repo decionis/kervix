@@ -45,6 +45,8 @@ If the authority itself dies, nothing moves: [AUTHORITY OFFLINE · ACTUATION LOC
 - **Re-check at the last moment.** The actuator redeems a grant once. Before anything moves, the authority re-checks the MAC, expiry, exact parameters and proposer binding, and re-evaluates the rule's interlock on the vehicle's state *now*.
 - **Prove it.** Every decision, approval, effect and restart is a signed, chained AAC draft-04 capsule in an append-only ledger ("no audit, no action"). `kervix-verify` checks signatures and chain offline. It also **re-runs every decision with the vehicle's own C policy core compiled to WebAssembly**, so a signed lie is caught.
 
+Policies are YAML compiled by `kxpolicy` (`npm run kxpolicy`), tested on the vehicle's own C core (`npm run policy:test`), signed by an author and a different approver, and activated only through the operator's channel.
+
 Details: [architecture](docs/03-architecture.md) · [design](docs/02-product-design.md) · [decisions](docs/decisions.md) · [QNX lessons learned](codelab/NOTES.md).
 
 ## Verified on QNX 8.0
@@ -57,6 +59,7 @@ Details: [architecture](docs/03-architecture.md) · [design](docs/02-product-des
 | Release image (`--secpol=secure`: one complete policy, nothing runs untyped, root's shell confined) | **29/29 PASS** · [table](docs/evidence/selftest-qnx-qemu-secure.txt) |
 | The run's signed dossier, verified offline on the host | **VERIFIED**: signatures, chain across restarts, 17/17 decisions replayed |
 | Red team (`kx-rogue`, 10 attacks as the deployed agent) | **0/10 open**, all refused by the kernel |
+| Signed policy updates (author ≠ approver, verified on the vehicle, activated, persisted, replayed offline) | **15/15** · `make target-policy` |
 | `kx-bench` (QEMU/TCG, emulated: ratios matter, not µs) | PROPOSE p50 39 µs / p99 167 µs in `kervixd`; the driver HMI's p99 is **1.03×** idle under a 16.6k proposals/s agent flood · [output](docs/evidence/bench-qnx-qemu.txt) |
 
 Host CI runs on every push: the portable C core and its tests (including ASan/UBSan and TSan), a libFuzzer run on the gateway parser, AAC/COSE conformance against `@decionis/verify`, verification of a committed QNX-signed dossier, the replay engine rebuilt from source, and the TypeScript bridge, agent and dashboard.

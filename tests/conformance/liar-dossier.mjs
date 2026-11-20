@@ -20,8 +20,11 @@ const key = createPrivateKey({ key: Buffer.concat([Buffer.from("302e020100300506
 const x = "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"; // RFC 8032 test 1 public key, base64url
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 
-function dossier(lie) {
-  const rows = execFileSync(bin, lie ? ["--emit", lie] : ["--emit"], { encoding: "utf8" }).trim().split("\n").map((l) => JSON.parse(l));
+// The emitted stream ends with a policy activation whose (synthetic) bundle does not
+// exist; it is kept only for the "missing bundle" case.
+function dossier(lie, keepPolicy = false) {
+  const all = execFileSync(bin, lie ? ["--emit", lie] : ["--emit"], { encoding: "utf8" }).trim().split("\n").map((l) => JSON.parse(l));
+  const rows = keepPolicy ? all : all.filter((r) => r.capsule.evidence.kervix.event !== "policy_activated");
   const dir = mkdtempSync(join(tmpdir(), lie ? "kx-liar-" : "kx-honest-"));
   const caps = rows.map((r) => r.text).join("\n") + "\n";
   const envs = rows.map((r) => {
@@ -64,5 +67,11 @@ const okHash = !hashLie.verified && hc.length === 1 && hc[0] === "replay" &&
   hashLie.findings.some((f) => f.message.includes("intent_hash does not recompute"));
 console.log(`${okHash ? "PASS" : "FAIL"}  signed grant bound to an intent hash that is not the recorded intent's: replay rejects it`);
 if (!okHash) { failures++; console.log(JSON.stringify(hashLie.findings)); }
+// a signed policy activation whose bundle is not in the dossier cannot be checked: it fails (policy), nothing else does
+const missing = run(dossier(null, true));
+const mc = [...new Set(missing.findings.map((f) => f.check))];
+const okMissing = !missing.verified && mc.length === 1 && mc[0] === "policy";
+console.log(`${okMissing ? "PASS" : "FAIL"}  a policy activation without its signed bundle is rejected (check: policy)`);
+if (!okMissing) { failures++; console.log(JSON.stringify(missing.findings)); }
 console.log(failures ? "LIAR DOSSIER: FAIL" : "LIAR DOSSIER: PASS");
 process.exit(failures ? 1 : 0);

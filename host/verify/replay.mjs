@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const catalog = JSON.parse(readFileSync(join(here, "../shared/catalog.gen.json"), "utf8"));
 
-export async function loadReplay(wasmPath = join(here, "kxcore.wasm")) {
+export async function loadReplay(wasmPath = join(here, "kxcore.wasm"), bodies = new Map()) {
   const { instance } = await WebAssembly.instantiate(readFileSync(wasmPath), {});
   const x = instance.exports;
   if (x.kxw_init() !== 0) throw new Error("replay engine: built-in policy failed to build");
@@ -16,7 +16,19 @@ export async function loadReplay(wasmPath = join(here, "kxcore.wasm")) {
   const hex = (ptr, n) => Buffer.from(mem().subarray(ptr, ptr + n)).toString("hex");
   const cstr = (ptr) => { const m = mem(); let e = ptr; while (m[e]) e++; return Buffer.from(m.subarray(ptr, e)).toString("utf8"); };
   const setStr = (s) => { const b = Buffer.from(s + "\0", "utf8"); mem().set(b, x.kxw_str()); };
-  const policyHash = "sha256:" + hex(x.kxw_policy_hash(), 32);
+  const policyHash = "sha256:" + hex(x.kxw_policy_hash(), 32);   // the built-in policy
+  // signed policies shipped in the dossier: body bytes keyed by the hash the C core computes
+  let loaded = policyHash;
+  const select = (h) => {
+    if (h === loaded) return true;
+    if (h === policyHash) { x.kxw_init(); loaded = policyHash; return true; }
+    const body = bodies.get(h);
+    if (!body) return false;
+    mem().set(body, x.kxw_body());
+    if (x.kxw_load(body.length) !== 0) { loaded = policyHash; return false; }
+    loaded = h;
+    return true;
+  };
   const actions = new Map(catalog.actions.map((a) => [a.name, a]));
   const fields = catalog.telemetry.map((f) => f.name);
   const verdicts = ["NONE", "ALLOW", "ESCALATE", "BLOCK"];
@@ -27,7 +39,7 @@ export async function loadReplay(wasmPath = join(here, "kxcore.wasm")) {
   function replay(capsule) {
     const k = capsule.evidence?.kervix;
     if (!k || k.event !== "decision") return { status: "skipped", detail: "not a decision" };
-    if (k.policy_hash !== policyHash) return { status: "skipped", detail: `policy ${k.policy_hash.slice(0, 15)}… not available to the replay engine` };
+    if (!select(k.policy_hash)) return { status: "unknown_policy", detail: `policy ${k.policy_hash.slice(0, 15)}… is not in the dossier` };
     const it = k.intent, a = actions.get(it.action);
     x.kxw_intent_reset(a ? a.id : 0, BigInt(it.expires_at_ms));
     for (const [name, v] of Object.entries(it.parameters)) {
@@ -65,5 +77,15 @@ export async function loadReplay(wasmPath = join(here, "kxcore.wasm")) {
     }
     return { status: "match", detail: "" };
   }
-  return { replay, policyHash, catalogSha: cstr(x.kxw_catalog_sha()) };
+  /** Load a policy body with the vehicle's loader; returns its hash or null if rejected. */
+  function hashBody(body) {
+    if (body.length > x.kxw_body_max()) return null;
+    mem().set(body, x.kxw_body());
+    const ok = x.kxw_load(body.length) === 0;
+    const h = ok ? "sha256:" + hex(x.kxw_policy_hash(), 32) : null;
+    x.kxw_init();
+    loaded = policyHash;
+    return h;
+  }
+  return { replay, policyHash, hashBody, catalogSha: cstr(x.kxw_catalog_sha()) };
 }

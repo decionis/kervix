@@ -6,6 +6,7 @@ add_library(kxcore STATIC
   src/policy.c
   src/policy_default.c
   src/policy_load.c
+  src/bundle.c
   src/sha256.c
   src/jcs.c
   src/intent.c

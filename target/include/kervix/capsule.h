@@ -32,6 +32,7 @@ typedef enum {
     KX_EV_ESC_RESOLVED,     /* driver approved / denied, or the escalation timed out */
     KX_EV_GRANT_REFUSED,    /* redemption refused: MAC/UNKNOWN/SPENT/EXPIRED/PARAMS/BINDING/INTERLOCK */
     KX_EV_GRANT_EXPIRED,    /* grant reaped unused */
+    KX_EV_POLICY,           /* a signed policy bundle was activated (author + approver) */
 } kx_event_t;
 
 typedef enum { KX_REL_NONE = 0, KX_REL_FOLLOWS, KX_REL_CONFIRMS, KX_REL_EPOCH_OPENS } kx_relation_t;
@@ -65,6 +66,7 @@ typedef struct {
     uint64_t       quarantined_bytes;  /* EPOCH: torn ledger tail moved aside at recovery */
     uint32_t       restart;            /* EPOCH: supervisor restart count (0 = first start) */
     char           restart_cause[16];  /* EPOCH: why the previous instance ended, e.g. "SIGKILL" (printable ASCII) */
+    uint8_t        prev_policy_hash[32]; /* POLICY: the policy it replaced (policy_hash = the new one) */
 } kx_capsule_rec_t;
 
 typedef struct {
