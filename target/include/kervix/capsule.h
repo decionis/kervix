@@ -63,6 +63,8 @@ typedef struct {
     uint32_t       client_type;
     int32_t        client_pid;
     uint64_t       quarantined_bytes;  /* EPOCH: torn ledger tail moved aside at recovery */
+    uint32_t       restart;            /* EPOCH: supervisor restart count (0 = first start) */
+    char           restart_cause[16];  /* EPOCH: why the previous instance ended, e.g. "SIGKILL" (printable ASCII) */
 } kx_capsule_rec_t;
 
 typedef struct {

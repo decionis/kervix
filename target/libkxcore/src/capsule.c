@@ -118,6 +118,12 @@ static int write_evidence(const kx_capsule_rec_t *r, const char *tenant_id, char
     kx_jw_key(&w, "policy_hash"); kx_jw_str(&w, h);
     if (r->event == KX_EV_EPOCH) { kx_jw_key(&w, "quarantined_bytes"); kx_jw_int(&w, (int64_t)r->quarantined_bytes); }
     kx_jw_key(&w, "reason"); kx_jw_str(&w, reason_name(r->reason));
+    if (r->event == KX_EV_EPOCH && r->restart) {       /* why this epoch began: supervisor restart */
+        kx_jw_key(&w, "recovery"); kx_jw_obj_begin(&w);
+        kx_jw_key(&w, "cause"); kx_jw_strn(&w, r->restart_cause, bnlen(r->restart_cause, sizeof r->restart_cause));
+        kx_jw_key(&w, "restart"); kx_jw_int(&w, r->restart);
+        kx_jw_obj_end(&w);
+    }
     if (r->rule_id[0]) { kx_jw_key(&w, "rule_id"); kx_jw_strn(&w, r->rule_id, bnlen(r->rule_id, sizeof r->rule_id)); }
     if (r->has_telemetry) { kx_jw_key(&w, "telemetry"); write_telemetry(&w, &r->telemetry); }
     if (r->event == KX_EV_DECISION || r->event == KX_EV_ESC_RESOLVED) {

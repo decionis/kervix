@@ -74,6 +74,7 @@ const known = [];
 const info = new Map();
 const byEvent = {};
 let epochs = 0, prev = null;
+const recoveries = []; // epochs opened by a supervised restart: { seq, restart, cause }
 for (const [i, line] of lines.entries()) {
   const where = `capsule #${i + 1}`;
   let c;
@@ -90,7 +91,15 @@ for (const [i, line] of lines.entries()) {
   else if (e.authenticated_public_key_base64url !== key.x) fail("signatures", where, "signed by a key other than the pinned vehicle key");
   const k = c.evidence?.kervix ?? {};
   byEvent[k.event] = (byEvent[k.event] ?? 0) + 1;
-  if (k.event === "epoch") epochs++;
+  if (k.event === "epoch") {
+    epochs++;
+    if (k.recovery) {
+      const r = k.recovery;
+      if (!Number.isInteger(r.restart) || r.restart < 1 || typeof r.cause !== "string" || !/^[A-Za-z0-9_]{1,15}$/.test(r.cause))
+        fail("semantics", where, "malformed recovery record on an epoch capsule");
+      else recoveries.push({ seq: k.ledger_seq, restart: r.restart, cause: r.cause });
+    }
+  } else if (k.recovery) fail("semantics", where, "recovery record on a non-epoch capsule");
   if (i === 0 && c.chain && c.chain.relation !== "epoch_opens") fail("chain", where, "first capsule chains to something outside the dossier");
   if (i > 0) {
     if (!c.chain || c.chain.parent_capsule_id !== prev.capsule_id) fail("chain", where, "parent is not the previous capsule: inserted, removed or reordered");
@@ -146,6 +155,7 @@ const summary = {
   capsules: known.length,
   seq: [manifest.first_seq, manifest.last_seq],
   epochs,
+  recoveries,
   events: byEvent,
   vehicle_key: key.kid,
   head: prev?.capsule_id ?? null,
@@ -163,7 +173,8 @@ if (asJson) {
   line("key", !bad("key").length, `Ed25519 kid ${key.kid}`);
   line("capsules", !bad("capsules").length, "canonical, self-identifying, AAC draft-04 Class 1 (@decionis/verify)");
   line("signatures", !bad("signatures").length, "every envelope signed by the pinned vehicle key");
-  line("chain", !bad("chain").length, `continuous, ${epochs} epoch(s)`);
+  line("chain", !bad("chain").length, `continuous, ${epochs} epoch(s)` +
+       (recoveries.length ? `; restarts: ${recoveries.map((r) => `#${r.restart} after ${r.cause} (seq ${r.seq})`).join(", ")}` : ""));
   line("semantics", !bad("semantics").length, `no unauthorized or repeated actuation (${executed.size} executed grant(s))`);
   line("replay", !bad("replay").length, `${replay.match}/${replay.match + replay.mismatch} decision(s) reproduced by the vehicle's own policy core (WASM)` +
        (replay.k3 ? `, ${replay.k3} ledger back-pressure override(s)` : "") + (replay.skipped ? `, ${replay.skipped} skipped (unknown policy)` : ""));

@@ -3,7 +3,7 @@
 # Rules for the stock QNX services and the admin shell; Kervix rules live in kervix.secpol.
 # Regenerate after changing the image or what the tests do; review every diff.
 
-# This represents policy updates for policy id a95707a9.  It contains the rules
+# This represents policy updates for policy id a5d362ce.  It contains the rules
 # representing the result of actions that would have failed with the existing
 # policy.
 
@@ -28,7 +28,6 @@ type io_usb_t;
 type mqueue_t;
 type mqueue_t__run;
 type pci_server_t;
-type pipe_t;
 type pipe_t__run;
 type qconn_t;
 type random_t__run;

@@ -89,6 +89,13 @@ if [ "$MODE" = secure ]; then
   [ "$(echo "$o" | grep -c "on: Operation not permitted")" = 3 ] && ! has "$o" started \
     && pass "root cannot start anything as kervix_t / actuator_t / vsim_t (kernel refuses settypeid: no fake authority or actuator)" \
     || bad "root could start a process as a trusted type: $o"
+  # J5 on the release image: only supervisor_t may start the authority, and it does
+  $Q ssh 'slay -9 -f kervixd; true' >/dev/null
+  for _ in $(seq 1 40); do $Q ssh 'grep -q "restart #1" /tmp/kervixd.log' && break; sleep 0.5; done
+  o=$($Q ssh "grep 'restart #1' /tmp/kervixd.log; $(denials) | grep -E 'type:(kervix|supervisor)' || true")
+  has "$o" "authority back in .* after SIGKILL (restart #1" && ! has "$o" "type:" \
+    && pass "kill -9 kervixd: kx-supervisor (supervisor_t) restarts it under the secure policy: $(echo "$o" | sed -n 's/.*\(back in [0-9.]* ms\).*/\1/p')" \
+    || bad "supervised restart on the secure image: $o"
 fi
 
 [ $fail -eq 0 ] && echo "SECPOL RESULT ($MODE): PASS" || { echo "SECPOL RESULT ($MODE): FAIL"; exit 1; }

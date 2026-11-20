@@ -154,7 +154,7 @@ static void build_stream(void) {
     push(e, KX_REL_FOLLOWS, 16, 6);                                                   /* 17 actuator failed */
     kx_intent_t bad = intent(KX_ACT_CABIN_CLIMATE_SET, 5); addp(&bad, KX_P_TEMP_DC, 999);
     push(decision(&bad, &p, 1), KX_REL_FOLLOWS, 17, -1);                              /* 18 BLOCK K4 (recorded as received) */
-    memset(&e, 0, sizeof e); e.event = KX_EV_EPOCH; e.reason = KX_R_AUTHORITY_EPOCH; e.quarantined_bytes = 117;
+    memset(&e, 0, sizeof e); e.event = KX_EV_EPOCH; e.reason = KX_R_AUTHORITY_EPOCH; e.quarantined_bytes = 117; e.restart = 2; memcpy(e.restart_cause, "SIGKILL", 8);
     push(e, KX_REL_EPOCH_OPENS, 18, -1);                                              /* 19 restart epoch */
 }
 
@@ -270,6 +270,9 @@ static void test_capsules(void) {
     KX_CHECK(strstr(JSON[16], "\"verdict_class\":\"blocked\"") && strstr(JSON[16], "\"approver\":\"policy\""));
     KX_CHECK(strstr(JSON[17], "\"status\":\"failed\"") && strstr(JSON[17], "\"effect_mode\":\"dispatched_unconfirmed\""));
     KX_CHECK(strstr(JSON[19], "\"relation\":\"epoch_opens\"") && strstr(JSON[19], "\"quarantined_bytes\":117"));
+    /* a supervisor restart is recorded, in JCS key order (reason < recovery < ...) */
+    KX_CHECK(strstr(JSON[19], "\"reason\":\"AUTHORITY_EPOCH\",\"recovery\":{\"cause\":\"SIGKILL\",\"restart\":2}") != NULL);
+    KX_CHECK(strstr(JSON[0], "\"recovery\"") == NULL);                    /* first start: no recovery */
     KX_CHECK(strstr(JSON[12], "\"verdict_class\":\"denied\"") && strstr(JSON[14], "\"verdict_class\":\"expired\""));
     KX_CHECK(strstr(JSON[0], "\"ledger_mode\":\"standalone\"") && strstr(JSON[0], "\"chain\"") == NULL);
 

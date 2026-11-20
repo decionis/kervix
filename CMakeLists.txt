@@ -37,6 +37,7 @@ if(KX_QNX)
   add_subdirectory(target/sdv_actuatord)
   add_subdirectory(target/kxctl)
   add_subdirectory(target/kx-rogue)
+  add_subdirectory(target/kx-supervisor)
 endif()
 
 if(KX_BUILD_TESTS)

@@ -468,9 +468,15 @@ Measurement:
 
 ## 11. Failure modes and responses
 
+> **Implemented (M2): `kx-supervisor`** (`target/kx-supervisor`, `tests/target/supervisor.sh`, `make target-supervisor`: 13/13 on QNX 8.0 with every Kervix type enforced; also checked on the `--secpol=secure` image).
+> - It runs as `supervisor_t`, **the only type allowed to start `kervix_t`**: `allow supervisor_t self:ability { spawn settypeid:kervix_t }`. Even root's shell can't start it (secure image).
+> - `kervixd`'s stdout/stderr come back through a **pipe**, and the supervisor forwards them to its log. The authority therefore inherits no file connection (§3.1 lesson), and the supervisor learns "ready" from the output itself.
+> - Restarts pass `-X <n>:<cause>` to the new `kervixd`, which writes it into the new epoch capsule: `"recovery":{"cause":"SIGKILL","restart":1}`. The signed ledger explains every gap.
+> - **Crash-loop guard:** more than 5 restarts in 60 s (`-n`, `-w`) and the supervisor exits instead of hiding a persistent fault. Actuation stays locked.
+
 | Failure | Detection | Response | Evidence |
 |---|---|---|---|
-| kervixd crash | actuatord MsgSend → `ESRCH`/`EBADF`; supervisor `waitpid` | Actuation impossible (fail-closed). Supervisor respawns ≤ 200 ms. New `k_grant` invalidates old grants. | `epoch_boundary` capsule with gap info |
+| kervixd crash | actuatord MsgSend → `ESRCH`/`EBADF`; `kx-supervisor` sees EOF on kervixd's output pipe + `waitpid` | Actuation impossible (fail-closed). Supervisor respawns at once (≈ 110 ms to "ready" under QEMU/TCG; RPi4 target ≤ 200 ms). New `k_grant` invalidates old grants. **Crash loop** (> 5 restarts in 60 s): the supervisor stops and the authority stays down. | `epoch_boundary` capsule carrying `recovery: {cause, restart}`; `kervix-verify` lists each restart |
 | vsimd crash / telemetry stall | Freshness watchdog | K1 BLOCK | `blocked` capsules with reason `TELEMETRY_STALE` |
 | actuatord crash after redeem | Effect never reported within 1 s | Grant closed as `failed`/unknown | Effect capsule `failed` with `ACTUATOR_LOST` |
 | Ledger disk full / signer error | Writer error, ring pressure | K3 BLOCK non-QM | Counter in stats; `blocked` capsules once space exists |
