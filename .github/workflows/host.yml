@@ -39,5 +39,8 @@ jobs:
         run: mkdir -p build && make -s tsan
       - name: Spike S5 — AAC draft-04 + COSE conformance vs @decionis/verify
         run: npm run -s spike:s5
-      - name: Conformance — intent + capsule parity, libkxcore (C) vs @decionis/verify
+      - name: Rebuild the replay engine (libkxcore -> WebAssembly) from source (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y -qq lld >/dev/null && wasm/build.sh
+      - name: Conformance — intent/capsule parity, QNX dossier fixture, signed-lie replay
         run: npm run -s conformance

@@ -70,3 +70,8 @@ These notes are the gotchas found while building Kervix. Each one becomes a call
 - "No audit, no action" needs **reservations**, not just a free-space check. Otherwise a flood can starve the record of an action that was already authorized.
 - Recovery must never silently drop bytes: quarantine the torn tail and record how many bytes were moved in the next capsule.
 
+## Same C, everywhere (replay via WebAssembly)
+- A portable C core (no OS headers, no malloc, no clocks) compiles unmodified to `--target=wasm32 -ffreestanding -nostdlib` with a ~40-line libc shim (memcpy/memset/strcmp/...). The result is 27 KB.
+- Export a setter API (`__attribute__((export_name(...)))`) rather than sharing struct layouts with JavaScript. 64-bit values cross as BigInt.
+- Apple clang ships without the wasm backend. A native-arch `ubuntu:24.04` container with `clang lld` builds it in seconds, and the Linux CI runner just needs `apt install lld`.
+

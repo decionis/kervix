@@ -15,6 +15,7 @@ const OUT = {
   cSource: join(ROOT, "target", "libkxcore", "src", "catalog_gen.c"),
   ts: join(ROOT, "host", "shared", "src", "catalog.gen.ts"),
   tools: join(ROOT, "host", "shared", "tools.gen.json"),
+  json: join(ROOT, "host", "shared", "catalog.gen.json"),
 };
 
 const MAX_PARAMS = 6; // must match KX_MAX_PARAMS in abi.h
@@ -242,7 +243,8 @@ const tools = actions.map((a) => {
 const toolsJson = JSON.stringify({ catalog_sha256: catalogSha, tools }, null, 2) + "\n";
 
 // ---------- write / check ----------
-const outputs = [[OUT.cHeader, h], [OUT.cSource, c], [OUT.ts, ts], [OUT.tools, toolsJson]];
+const outputs = [[OUT.cHeader, h], [OUT.cSource, c], [OUT.ts, ts], [OUT.tools, toolsJson],
+                 [OUT.json, JSON.stringify(tsCatalog, null, 2) + "\n"]];
 const check = process.argv.includes("--check");
 let stale = 0;
 for (const [path, content] of outputs) {

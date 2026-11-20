@@ -40,10 +40,26 @@ T "$K dossier export /tmp/dossier >/dev/null"
 fetch /tmp/dossier dossier
 o=$($V build/dossier || true); echo "$o" | sed 's/^/INFO  /'
 has "$o" "^VERIFIED" && pass "dossier signed on QNX verifies offline on the host (kervix-verify)" || bad "verify"
+n=$(echo "$o" | sed -n 's/.*replay  *\([0-9]*\)\/\([0-9]*\) decision.*/\1 \2/p')
+set -- $n; [ -n "${1:-}" ] && [ "$1" = "$2" ] && [ "$1" -gt 0 ] && pass "replay: all $1 decisions reproduced by the vehicle's own policy core (WASM), intent hashes recomputed" || bad "replay: $o"
 for e in epoch decision effect grant_refused grant_expired escalation_resolved; do
   has "$o" "$e=" || bad "lifecycle is missing event $e"
 done
 has "$o" "grant_refused=" && has "$o" "escalation_resolved=1" && pass "lifecycle covers decisions, effects, refusals, expiry and a human approval" || true
+
+echo "== an edited decision that contradicts the policy is caught by replay (see also tests/conformance/liar-dossier.mjs)"
+python3 - <<'PY'
+import json,shutil,hashlib
+shutil.rmtree("build/dl",ignore_errors=True); shutil.copytree("build/dossier","build/dl")
+p="build/dl/capsules.jsonl"; lines=open(p).read().splitlines()
+for i,l in enumerate(lines):
+    c=json.loads(l); k=c["evidence"]["kervix"]
+    if k["event"]=="decision" and k["reason"]=="R156_NOT_SAFE_STATE":
+        k["verdict"]="ALLOW"; k["reason"]="OK"; lines[i]=json.dumps(c,separators=(",",":")); break
+open(p,"w").write("\n".join(lines)+"\n")
+PY
+o=$($V build/dl || true)
+has "$o" "decision does not follow from the policy: verdict: recorded ALLOW, replay BLOCK" && pass "OTA flash at 110 km/h recorded as ALLOW: replay re-derives BLOCK and flags it" || bad "lying authority: $o"
 
 echo "== tampering (each must be detected)"
 tamper() { rm -rf build/dt; cp -r build/dossier build/dt; "$@"; }
@@ -102,6 +118,7 @@ T "sleep 1; $K dossier export /tmp/dossier3 >/dev/null"
 fetch /tmp/dossier3 dossier3
 o=$($V build/dossier3 || true)
 has "$o" "^VERIFIED" && pass "ledger still verifies after back-pressure (every action recorded)" || bad "post-K3 verify: $o"
+has "$o" "ledger back-pressure override" && pass "replay accounts for K3 back-pressure decisions" || bad "K3 replay: $o"
 
 T 'slay -f vsimd kervixd sdv_actuatord >/dev/null 2>&1; true'
 [ $fail -eq 0 ] && echo "LEDGER RESULT: PASS" || { echo "LEDGER RESULT: FAIL"; exit 1; }

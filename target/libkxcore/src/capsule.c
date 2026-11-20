@@ -39,7 +39,7 @@ static void write_telemetry(kx_jw_t *w, const kx_telemetry_t *t) {
 }
 
 /* intent as the replay verifier needs it; parameters rendered like the binding */
-static void write_intent(kx_jw_t *w, const kx_capsule_rec_t *r) {
+static void write_intent(kx_jw_t *w, const kx_capsule_rec_t *r, const char *tenant_id) {
     const kx_intent_t *in = &r->intent;
     const kx_action_spec_t *a = kx_catalog_action(in->action);
     char uuid[37], dig[72];
@@ -81,10 +81,11 @@ static void write_intent(kx_jw_t *w, const kx_capsule_rec_t *r) {
         }
     }
     kx_jw_obj_end(w);
+    if (tenant_id) { kx_jw_key(w, "tenant_id"); kx_jw_str(w, tenant_id); }
     kx_jw_obj_end(w);
 }
 
-static int write_evidence(const kx_capsule_rec_t *r, char *buf, size_t cap) {
+static int write_evidence(const kx_capsule_rec_t *r, const char *tenant_id, char *buf, size_t cap) {
     char h[72], gid[33];
     kx_jw_t w;
     kx_jw_init(&w, buf, cap);
@@ -108,7 +109,7 @@ static int write_evidence(const kx_capsule_rec_t *r, char *buf, size_t cap) {
     if (r->has_grant) { hex(r->grant_id, 16, gid); kx_jw_key(&w, "grant_id"); kx_jw_str(&w, gid); }
     if (r->has_intent) {
         kx_jw_key(&w, "intent");
-        write_intent(&w, r);
+        write_intent(&w, r, tenant_id);
         sha_hex_prefixed(r->intent_hash, h);
         kx_jw_key(&w, "intent_hash"); kx_jw_str(&w, h);
     }
@@ -284,7 +285,7 @@ int kx_capsule_build(const kx_capsule_rec_t *rec, const kx_capsule_ctx_t *ctx, c
     if (rec == NULL || ctx == NULL || ctx->vehicle_id == NULL || out == NULL) return -1;
     if (rec->event < KX_EV_EPOCH || rec->event > KX_EV_GRANT_EXPIRED) return -1;
     static char evidence[3072];  /* single writer thread: static scratch, not reentrant */
-    int ev = write_evidence(rec, evidence, sizeof evidence);
+    int ev = write_evidence(rec, ctx->tenant_id, evidence, sizeof evidence);
     if (ev < 0) return -1;
     uint8_t ev_digest[32];
     kx_sha256(evidence, (size_t)ev, ev_digest);

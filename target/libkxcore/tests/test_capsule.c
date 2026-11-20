@@ -1,6 +1,7 @@
 /* Capsules + COSE envelope + base64url.
  *   test_capsule          unit tests
- *   test_capsule --emit   one JSON line per capsule of a realistic stream:
+ *   test_capsule --emit [--lie]  one JSON line per capsule of a realistic stream
+ *                         (--lie: one decision contradicts the policy, everything else valid):
  *       {"capsule": <capsule>, "text": "<exact bytes>", "envelope_unsigned": "<hex, sig zeroed>",
  *        "sig_structure": "<hex>"}
  *   tests/conformance/capsule-parity.mjs checks them with @decionis/verify and
@@ -89,7 +90,7 @@ static kx_capsule_rec_t decision(const kx_intent_t *in, const kx_telemetry_t *te
 }
 
 typedef struct { kx_capsule_rec_t rec; kx_relation_t rel; int parent; int ref; } step_t;
-#define MAX_STEPS 20
+#define MAX_STEPS 24
 static step_t S[MAX_STEPS];
 static int NS;
 static uint8_t IDS[MAX_STEPS][32];
@@ -133,20 +134,28 @@ static void build_stream(void) {
     push(e, KX_REL_FOLLOWS, 8, -1);                                                   /* 9 replay refused */
     e = S[6].rec; e.event = KX_EV_GRANT_EXPIRED; e.reason = KX_R_GRANT_EXPIRED; e.has_telemetry = 0;
     push(e, KX_REL_FOLLOWS, 9, -1);                                                   /* 10 expired unused */
-    e = decision(&loc, &p, 1); e.event = KX_EV_ESC_RESOLVED; e.verdict = KX_VERDICT_BLOCK; e.reason = KX_R_HUMAN_DENIED;
-    e.human = 1; strcpy(e.approver, "hmi:driver-seat"); e.has_grant = 0; e.escalation_id = 8;
-    push(e, KX_REL_FOLLOWS, 10, -1);                                                  /* 11 denied */
-    e.reason = KX_R_ESCALATION_TIMEOUT; e.human = 0; e.approver[0] = '\0'; e.escalation_id = 9;
-    push(e, KX_REL_FOLLOWS, 11, -1);                                                  /* 12 timed out */
-    e = S[4].rec; e.event = KX_EV_ESC_RESOLVED; e.verdict = KX_VERDICT_BLOCK; e.reason = KX_R_R156_NOT_SAFE_STATE;
-    e.human = 1; strcpy(e.approver, "hmi:driver-seat"); e.escalation_id = 10;
-    push(e, KX_REL_FOLLOWS, 12, -1);                                                  /* 13 approved but re-blocked */
+    push(decision(&loc, &p, 1), KX_REL_FOLLOWS, 10, -1);                             /* 11 ESCALATE location */
+    S[11].rec.escalation_id = 8;
+    e = S[11].rec; e.event = KX_EV_ESC_RESOLVED; e.verdict = KX_VERDICT_BLOCK; e.reason = KX_R_HUMAN_DENIED;
+    e.human = 1; strcpy(e.approver, "hmi:driver-seat");
+    push(e, KX_REL_FOLLOWS, 11, -1);                                                  /* 12 denied */
+    kx_intent_t loc2 = intent(KX_ACT_TELEMATICS_LOCATION_SHARE, 6); addp(&loc2, KX_P_RECIPIENT, KX_RECIPIENT_ROADSIDE_ASSIST); addp(&loc2, KX_P_DURATION_S, 600);
+    push(decision(&loc2, &p, 1), KX_REL_FOLLOWS, 12, -1);                            /* 13 ESCALATE location */
+    S[13].rec.escalation_id = 9;
+    e = S[13].rec; e.event = KX_EV_ESC_RESOLVED; e.verdict = KX_VERDICT_BLOCK; e.reason = KX_R_ESCALATION_TIMEOUT;
+    push(e, KX_REL_FOLLOWS, 13, -1);                                                  /* 14 timed out */
+    kx_intent_t ota2 = intent(KX_ACT_OTA_ECU_FLASH, 7); addp(&ota2, KX_P_ECU, KX_ECU_ADAS); ota2.has_digest = 1; memset(ota2.digest, 2, 32);
+    push(decision(&ota2, &p, 1), KX_REL_FOLLOWS, 14, -1);                            /* 15 ESCALATE ota */
+    S[15].rec.escalation_id = 10;
+    e = S[15].rec; e.event = KX_EV_ESC_RESOLVED; e.verdict = KX_VERDICT_BLOCK; e.reason = KX_R_R156_NOT_SAFE_STATE;
+    e.human = 1; strcpy(e.approver, "hmi:driver-seat");
+    push(e, KX_REL_FOLLOWS, 15, -1);                                                  /* 16 approved but re-blocked */
     e = S[6].rec; e.event = KX_EV_EFFECT; e.effect_ok = 0; e.reason = KX_R_ACTUATOR_FAILED; e.has_telemetry = 0; memset(e.request_digest, 0x55, 32);
-    push(e, KX_REL_FOLLOWS, 13, 6);                                                   /* 14 actuator failed */
+    push(e, KX_REL_FOLLOWS, 16, 6);                                                   /* 17 actuator failed */
     kx_intent_t bad = intent(KX_ACT_CABIN_CLIMATE_SET, 5); addp(&bad, KX_P_TEMP_DC, 999);
-    push(decision(&bad, &p, 1), KX_REL_FOLLOWS, 14, -1);                              /* 15 BLOCK K4 (recorded as received) */
+    push(decision(&bad, &p, 1), KX_REL_FOLLOWS, 17, -1);                              /* 18 BLOCK K4 (recorded as received) */
     memset(&e, 0, sizeof e); e.event = KX_EV_EPOCH; e.reason = KX_R_AUTHORITY_EPOCH; e.quarantined_bytes = 117;
-    push(e, KX_REL_EPOCH_OPENS, 15, -1);                                              /* 16 restart epoch */
+    push(e, KX_REL_EPOCH_OPENS, 18, -1);                                              /* 19 restart epoch */
 }
 
 static kx_capsule_ctx_t ctx(void) {
@@ -169,8 +178,20 @@ static int build_all(void) {
     return 0;
 }
 
-static int emit(void) {
+/* lie: record the OTA-at-110-km/h decision (#3) as ALLOW, then hash and chain
+ * everything validly: what a compromised authority holding the key could sign */
+static int emit(int lie) {
     build_stream();
+    if (lie == 2) {           /* the recorded intent hash does not belong to the recorded intent */
+        S[1].rec.intent_hash[0] ^= 0xff;
+        S[2].rec.intent_hash[0] ^= 0xff;
+    }
+    if (lie == 1) {
+        S[3].rec.verdict = KX_VERDICT_ALLOW;
+        S[3].rec.reason = KX_R_OK;
+        S[3].rec.has_grant = 1;
+        memset(S[3].rec.grant_id, 0x99, 16);
+    }
     if (build_all() != 0) return 1;
     for (int i = 0; i < NS; i++) {
         uint8_t ss[KX_COSE_SIG_STRUCTURE_LEN], env[KX_COSE_ENVELOPE_LEN], zero[64] = { 0 };
@@ -246,9 +267,10 @@ static void test_capsules(void) {
     KX_CHECK(strstr(JSON[3], "\"verdict_class\":\"blocked\"") && strstr(JSON[3], "\"reason\":\"R156_NOT_SAFE_STATE\""));
     KX_CHECK(strstr(JSON[5], "\"approver\":\"human\"") && strstr(JSON[5], "\"human_disposed\":true"));
     KX_CHECK(strstr(JSON[7], "com.kervix.constitution.k1_stale"));
-    KX_CHECK(strstr(JSON[13], "\"verdict_class\":\"blocked\"") && strstr(JSON[13], "\"approver\":\"policy\""));
-    KX_CHECK(strstr(JSON[14], "\"status\":\"failed\"") && strstr(JSON[14], "\"effect_mode\":\"dispatched_unconfirmed\""));
-    KX_CHECK(strstr(JSON[16], "\"relation\":\"epoch_opens\"") && strstr(JSON[16], "\"quarantined_bytes\":117"));
+    KX_CHECK(strstr(JSON[16], "\"verdict_class\":\"blocked\"") && strstr(JSON[16], "\"approver\":\"policy\""));
+    KX_CHECK(strstr(JSON[17], "\"status\":\"failed\"") && strstr(JSON[17], "\"effect_mode\":\"dispatched_unconfirmed\""));
+    KX_CHECK(strstr(JSON[19], "\"relation\":\"epoch_opens\"") && strstr(JSON[19], "\"quarantined_bytes\":117"));
+    KX_CHECK(strstr(JSON[12], "\"verdict_class\":\"denied\"") && strstr(JSON[14], "\"verdict_class\":\"expired\""));
     KX_CHECK(strstr(JSON[0], "\"ledger_mode\":\"standalone\"") && strstr(JSON[0], "\"chain\"") == NULL);
 
     /* REPLAY: every recorded decision reproduces bit-for-bit from its evidence */
@@ -260,7 +282,7 @@ static void test_capsules(void) {
         kx_capsule_replay(&POL, &S[i].rec, &r);
         KX_CHECK(r.verdict == S[i].rec.verdict && r.reason == S[i].rec.reason && r.rule_index == S[i].rec.rule_index);
     }
-    KX_CHECK(decisions == 6);   /* steps 1,3,4,6,7,15 */
+    KX_CHECK(decisions == 9);   /* steps 1,3,4,6,7,11,13,15,18 */
 
     /* invalid records never produce a capsule */
     char out[KX_CAPSULE_JCS_MAX];
@@ -275,7 +297,8 @@ static void test_capsules(void) {
 
 int main(int argc, char **argv) {
     if (kx_policy_build_default(&POL) != 0) return 1;
-    if (argc > 1 && strcmp(argv[1], "--emit") == 0) return emit();
+    if (argc > 1 && strcmp(argv[1], "--emit") == 0)
+        return emit(argc > 2 && strcmp(argv[2], "--lie") == 0 ? 1 : argc > 2 && strcmp(argv[2], "--lie-hash") == 0 ? 2 : 0);
     test_cose_and_b64();
     test_capsules();
     KX_TEST_DONE();

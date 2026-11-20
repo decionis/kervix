@@ -11,11 +11,17 @@
 //   4 signatures  every Producer Envelope verifies AND is signed by the pinned vehicle key
 //   5 chain       each capsule's parent is the previous one; ledger_seq is contiguous; epochs
 //   6 semantics   no effect without prior authority for that grant; no grant executed twice;
-//                 every escalation resolution follows its escalation
+//                 every escalation resolution follows its escalation, at most once
+//   7 replay      every decision is re-evaluated by the SAME C policy core that runs on the
+//                 vehicle (libkxcore -> WebAssembly) on the recorded intent, telemetry and
+//                 environment: verdict, gate, reason and rule must reproduce, and the intent
+//                 hash the grant was bound to must recompute. Signatures prove WHO recorded a
+//                 decision; replay proves the decision FOLLOWS from the policy.
 // Exit: 0 verified, 1 a check failed, 2 usage / IO error.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { loadReplay } from "./replay.mjs";
 import {
   computeAgentActionCapsuleV04Id,
   jcsCanonicalize,
@@ -100,12 +106,15 @@ if (prev && manifest.head_capsule_id !== prev.capsule_id) fail("manifest", "head
 const authorized = new Map(); // grant_id -> intent_hash
 const executed = new Set();
 const escalated = new Set();
+const resolved = new Set();
 for (const [i, c] of known.entries()) {
   const k = c.evidence.kervix, where = `capsule #${i + 1}`;
   if (k.event === "decision" && k.verdict === "ALLOW" && k.grant_id) authorized.set(k.grant_id, k.intent_hash);
   if (k.event === "decision" && k.verdict === "ESCALATE") escalated.add(k.escalation_id);
   if (k.event === "escalation_resolved") {
     if (!escalated.has(k.escalation_id)) fail("semantics", where, `resolution of escalation #${k.escalation_id} without a prior escalation`);
+    else if (resolved.has(k.escalation_id)) fail("semantics", where, `escalation #${k.escalation_id} resolved twice`);
+    resolved.add(k.escalation_id);
     if (k.verdict === "ALLOW" && k.grant_id) authorized.set(k.grant_id, k.intent_hash);
   }
   if (k.event === "effect") {
@@ -116,6 +125,17 @@ for (const [i, c] of known.entries()) {
       executed.add(k.grant_id);
     }
   }
+}
+
+// 7 replay ----------------------------------------------------------------------
+const engine = await loadReplay(args.find((a) => a.startsWith("--wasm="))?.slice(7));
+const replay = { match: 0, mismatch: 0, skipped: 0, k3: 0 };
+for (const [i, c] of known.entries()) {
+  if (c.evidence?.kervix?.event !== "decision") continue;
+  const r = engine.replay(c);
+  replay[r.status]++;
+  if (r.detail.includes("K3")) replay.k3++;
+  if (r.status === "mismatch") fail("replay", `capsule #${i + 1}`, `decision does not follow from the policy: ${r.detail}`);
 }
 
 // report ------------------------------------------------------------------------
@@ -129,6 +149,7 @@ const summary = {
   events: byEvent,
   vehicle_key: key.kid,
   head: prev?.capsule_id ?? null,
+  replay,
   findings,
   informational: Object.fromEntries(info),
 };
@@ -144,6 +165,8 @@ if (asJson) {
   line("signatures", !bad("signatures").length, "every envelope signed by the pinned vehicle key");
   line("chain", !bad("chain").length, `continuous, ${epochs} epoch(s)`);
   line("semantics", !bad("semantics").length, `no unauthorized or repeated actuation (${executed.size} executed grant(s))`);
+  line("replay", !bad("replay").length, `${replay.match}/${replay.match + replay.mismatch} decision(s) reproduced by the vehicle's own policy core (WASM)` +
+       (replay.k3 ? `, ${replay.k3} ledger back-pressure override(s)` : "") + (replay.skipped ? `, ${replay.skipped} skipped (unknown policy)` : ""));
   console.log(`  events: ${Object.entries(byEvent).map(([e, n]) => `${e}=${n}`).join("  ")}`);
   for (const f of findings) console.log(`  FAIL [${f.check}] ${f.where}: ${f.message}`);
   for (const [m, n] of info) console.log(`  info ${n}x ${m}`);

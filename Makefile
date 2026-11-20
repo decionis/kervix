@@ -1,6 +1,6 @@
 # Kervix top-level shortcuts. Host targets run natively. QNX targets run in
 # the qnx-build container (docker/qnx-build.sh), which works on macOS and Linux.
-.PHONY: help host asan test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 target-escalation target-ledger tsan clean
+.PHONY: help host asan wasm test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 target-escalation target-ledger tsan clean
 
 ARCHES ?= x86_64 aarch64le
 KX_CORE_TESTS = libkxcore/tests/test_catalog libkxcore/tests/test_policy libkxcore/tests/test_sha256 \
@@ -10,6 +10,7 @@ help:
 	@echo "make host            build libkxcore + host tests (native)"
 	@echo "make test            run host unit tests + codegen check + spikes"
 	@echo "make asan            host unit tests under AddressSanitizer + UBSan"
+	@echo "make wasm            rebuild the replay engine (libkxcore -> WebAssembly)"
 	@echo "make tsan            seqlock under ThreadSanitizer"
 	@echo "make codegen         regenerate C/TS/tool schemas from catalog/catalog.yaml"
 	@echo "make target          build QNX 8.0 binaries for: $(ARCHES) (needs SDP, see docs/setup-macos.md)"
@@ -42,6 +43,10 @@ tsan:
 	cc -std=c11 -O1 -g -fsanitize=thread -Itarget/include target/libkxsim/tests/test_seqlock.c \
 	  target/libkxcore/src/catalog_gen.c -o build/test_seqlock_tsan -lpthread
 	build/test_seqlock_tsan
+
+# libkxcore -> WebAssembly replay engine for kervix-verify (host/verify/kxcore.wasm)
+wasm:
+	wasm/build.sh
 
 asan:
 	cmake -S . -B build/asan -DCMAKE_BUILD_TYPE=Debug \
