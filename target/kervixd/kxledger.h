@@ -27,6 +27,8 @@ typedef struct {
     uint32_t    slow_ms;        /* test hook: artificial delay per record (simulated slow storage) */
     int         verbose;
     uint8_t     policy_hash[32];
+    uint32_t    restart;        /* kx-supervisor restart count (0 = first start); recorded in the epoch capsule */
+    char        restart_cause[16];
 } kxl_config_t;
 
 /* Load or create the vehicle key, recover the ledger, queue the epoch capsule

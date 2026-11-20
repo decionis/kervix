@@ -653,8 +653,10 @@ int main(int argc, char **argv) {
     snprintf(K.tenant_id, sizeof K.tenant_id, "6f1c2b9e-4d3a-4c8b-9a7e-2b1d0c3e4f5a");
     unsigned max_age_ms = 50, ring = 1024, slow_ms = 0;
     const char *datadir = "/data/kervix";
+    unsigned restart = 0;
+    char restart_cause[16] = "";
     int opt;
-    while ((opt = getopt(argc, argv, "V:T:A:D:R:S:v")) != -1) {
+    while ((opt = getopt(argc, argv, "V:T:A:D:R:S:X:v")) != -1) {
         if (opt == 'V') snprintf(K.vehicle_id, sizeof K.vehicle_id, "%s", optarg);
         else if (opt == 'T') snprintf(K.tenant_id, sizeof K.tenant_id, "%s", optarg);
         else if (opt == 'A') max_age_ms = (unsigned)atoi(optarg);
@@ -662,7 +664,18 @@ int main(int argc, char **argv) {
         else if (opt == 'D') datadir = optarg;
         else if (opt == 'R') ring = (unsigned)atoi(optarg);
         else if (opt == 'S') slow_ms = (unsigned)atoi(optarg);
-        else { fprintf(stderr, "usage: kervixd [-V vehicle_id] [-T tenant_uuid] [-A max_age_ms] [-D datadir] [-R queue] [-S slow_ms] [-v]\n"); return 2; }
+        else if (opt == 'X') {                       /* set by kx-supervisor: <restart>:<cause> */
+            char *colon = strchr(optarg, ':');
+            restart = (unsigned)strtoul(optarg, NULL, 10);
+            if (colon) {
+                size_t n = 0;                        /* recorded in canonical JSON: [A-Za-z0-9_] only */
+                for (const char *c = colon + 1; *c && n < sizeof restart_cause - 1; c++)
+                    if ((*c >= 'A' && *c <= 'Z') || (*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '_') restart_cause[n++] = *c;
+                restart_cause[n] = '\0';
+            }
+            if (!restart_cause[0]) snprintf(restart_cause, sizeof restart_cause, "unknown");
+        }
+        else { fprintf(stderr, "usage: kervixd [-V vehicle_id] [-T tenant_uuid] [-A max_age_ms] [-D datadir] [-R queue] [-S slow_ms] [-X restart:cause] [-v]\n"); return 2; }
     }
     setvbuf(stdout, NULL, _IOLBF, 0);
     K.max_age_ns = (uint64_t)max_age_ms * 1000000ull;
@@ -685,8 +698,9 @@ int main(int argc, char **argv) {
     kx_grant_table_init(&K.grants, key);
     qcrypto_memclear(key, sizeof key);
 
-    kxl_config_t lc = { datadir, K.vehicle_id, K.tenant_id, ring, slow_ms, K.verbose, { 0 } };
+    kxl_config_t lc = { datadir, K.vehicle_id, K.tenant_id, ring, slow_ms, K.verbose, { 0 }, restart, { 0 } };
     memcpy(lc.policy_hash, K.policy.hash, 32);
+    memcpy(lc.restart_cause, restart_cause, sizeof lc.restart_cause);
     if (kxl_open(&lc) != 0) { fprintf(stderr, "kervixd: ledger unavailable: refusing to start (no audit, no action)\n"); return 1; }
 
     for (int c = 0; c < CH__COUNT; c++) {

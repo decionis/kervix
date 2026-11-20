@@ -12,6 +12,7 @@ type actuator_t;   type actuator_run_t;   # actuator bus gateway (the only proce
 type agentgw_t;                           # AI-agent gateway: untrusted
 type hmigw_t;                             # driver HMI gateway
 type operator_t;                          # workshop / test operator console
+type supervisor_t;                        # kx-supervisor: restarts kervixd, nothing else
 
 # ---- channel types (one per trust boundary) -------------------------------
 type vsim_tel_ch_t;  type vsim_ctl_ch_t;  type vsim_act_ch_t;
@@ -47,17 +48,24 @@ allow vsim_t     self:ability { settypeid:vsim_run_t };
 allow kervix_t   self:ability { settypeid:kervix_run_t };
 allow actuator_t self:ability { settypeid:actuator_run_t };
 
+# ---- supervision: the only type that may start the authority ---------------
+# kx-supervisor spawns kervixd as kervix_t and reads its output through a pipe
+# (so kervixd inherits no file connection). It holds no Kervix channel at all.
+allow supervisor_t self:ability { spawn settypeid:kervix_t };
+
 # ---- system services the restricted Kervix types need ------------------------
 # (types of base-OS services; found by running restricted and reading the
 #  secpolgenerate denial log: tests/target/secpol.sh)
 type random_t;
 type slogger_t;
 type devb_t;
+type pipe_t;
 allow { kervix_t kervix_run_t agentgw_t hmigw_t operator_t } random_t:channel connect;  # DRBG entropy; intent UUIDs
 allow { kervix_t kervix_run_t operator_t } devb_t:channel connect;        # ledger + vehicle key; operator export
 # NOTE secpol checks channel_connect when a connection is ATTACHED. A process that
 # inherits an open fd keeps that connection (libc reuses it), so launchers must
 # not leak fds into restricted processes. Kervix daemons get explicit rules here
 # rather than relying on how they happened to be started.
-allow { vsim_t vsim_run_t kervix_t kervix_run_t actuator_t actuator_run_t agentgw_t hmigw_t operator_t }
+allow supervisor_t pipe_t:channel connect;                                # kervixd's output pipe
+allow { vsim_t vsim_run_t kervix_t kervix_run_t actuator_t actuator_run_t agentgw_t hmigw_t operator_t supervisor_t }
       slogger_t:channel connect;                                          # slog2 logging

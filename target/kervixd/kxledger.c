@@ -339,6 +339,8 @@ int kxl_open(const kxl_config_t *cfg) {
     e.event = KX_EV_EPOCH;
     e.reason = KX_R_AUTHORITY_EPOCH;
     e.quarantined_bytes = L.quarantined;
+    e.restart = cfg->restart;
+    memcpy(e.restart_cause, cfg->restart_cause, sizeof e.restart_cause);
     e.client_pid = getpid();
     kxl_submit(&e, 0);
 

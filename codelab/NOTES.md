@@ -80,6 +80,15 @@ These notes are the gotchas found while building Kervix. Each one becomes a call
 - "No audit, no action" needs **reservations**, not just a free-space check. Otherwise a flood can starve the record of an action that was already authorized.
 - Recovery must never silently drop bytes: quarantine the torn tail and record how many bytes were moved in the next capsule.
 
+## Supervision (kx-supervisor)
+- Start the child in a type with `secpol_posix_spawnattr_settypeid(NULL, &attr, "kervix_t", SECPOL_TYPE_NAME)`. Without a policy it does nothing, so the same binary works on plain images. The policy needs `allow supervisor_t self:ability { spawn settypeid:kervix_t };`.
+- Give the child a **pipe** for stdout/stderr (`posix_spawn_file_actions_adddup2`) instead of a log file. The child inherits no file connection, and EOF on the pipe is the earliest sign the child is gone, before `waitpid`.
+- **Gotchas found by the tests:**
+  - QNX `slay` exits with the **number of processes signalled**, so under `set -e` a successful `slay` aborts the script. Append `; true`.
+  - `pidin -F "%N"` pads names with spaces, so `^name$` never matches. Strip with `tr -d ' '`.
+  - **`mkqnximage` remembers options between builds.** A "plain" build after `--secpol=secure` is still secure. Always pass `--secpol=no --policy=none --secure-procfs=no` and override them when needed.
+  - `SIGSTOP` the supervisor to hold the system "authority down" long enough to prove fail-closed behaviour deterministically, then `SIGCONT`.
+
 ## Same C, everywhere (replay via WebAssembly)
 - A portable C core (no OS headers, no malloc, no clocks) compiles unmodified to `--target=wasm32 -ffreestanding -nostdlib` with a ~40-line libc shim (memcpy/memset/strcmp/...). The result is 27 KB.
 - Export a setter API (`__attribute__((export_name(...)))`) rather than sharing struct layouts with JavaScript. 64-bit values cross as BigInt.

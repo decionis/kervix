@@ -43,9 +43,12 @@ cmd_image() {
       echo "# local/snippets/$f.custom (managed by scripts/qemu.sh)" > "$VM/local/snippets/$f.custom"
     fi
   done
+  # mkqnximage REMEMBERS options between builds: a "plain" build after a secure
+  # one stays secure. State every security option; KX_MKQNXIMAGE_EXTRA overrides.
   "$REPO/docker/qnx-build.sh" bash -c "cd /work/vm/qemu-$ARCH && mkqnximage --noprompt --type=qemu \
     --arch=$ARCH --hostname=kervix-qemu --ip=dhcp --ssh-ident=/work/vm/ssh/kervix_ed25519.pub \
-    --data-size=256 --cpu=2 --ram=1G --build ${KX_MKQNXIMAGE_EXTRA:-}"
+    --data-size=256 --cpu=2 --ram=1G --secpol=no --policy=none --secure-procfs=no \
+    --build ${KX_MKQNXIMAGE_EXTRA:-}"
 }
 
 cmd_start() {

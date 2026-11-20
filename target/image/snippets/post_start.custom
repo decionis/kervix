@@ -3,7 +3,7 @@
 #if defined(OPT_SECPOL_no)
 /system/bin/kervix/vsimd > /tmp/vsimd.log 2>&1 &
 waitfor /dev/sdv/telemetry 5
-/system/bin/kervix/kervixd > /tmp/kervixd.log 2>&1 &
+/system/bin/kervix/kx-supervisor -- /system/bin/kervix/kervixd > /tmp/kervixd.log 2>&1 &
 waitfor /dev/kervix/redeem 10
 /system/bin/kervix/sdv_actuatord > /tmp/sdv_actuatord.log 2>&1 &
 #else
@@ -14,7 +14,7 @@ waitfor /dev/secpolgenerate/errors 5
 #endif
 on -T vsim_t /system/bin/kervix/vsimd > /tmp/vsimd.log 2>&1 &
 waitfor /dev/sdv/telemetry 5
-on -T kervix_t /system/bin/kervix/kervixd > /tmp/kervixd.log 2>&1 &
+on -T supervisor_t /system/bin/kervix/kx-supervisor -- /system/bin/kervix/kervixd > /tmp/kervixd.log 2>&1 &
 waitfor /dev/kervix/redeem 10
 on -T actuator_t /system/bin/kervix/sdv_actuatord > /tmp/sdv_actuatord.log 2>&1 &
 #endif

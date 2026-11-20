@@ -1,6 +1,6 @@
 # Kervix top-level shortcuts. Host targets run natively. QNX targets run in
 # the qnx-build container (docker/qnx-build.sh), which works on macOS and Linux.
-.PHONY: help host asan wasm test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 target-escalation target-ledger target-secpol target-secpol-secure secpol-harvest tsan clean
+.PHONY: help host asan wasm test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 target-escalation target-ledger target-secpol target-secpol-secure secpol-harvest target-supervisor tsan clean
 
 ARCHES ?= x86_64 aarch64le
 KX_CORE_TESTS = libkxcore/tests/test_catalog libkxcore/tests/test_policy libkxcore/tests/test_sha256 \
@@ -25,6 +25,7 @@ help:
 	@echo "make target-secpol   every component under an enforced secpol type + kx-rogue red team on QNX"
 	@echo "make target-secpol-secure  the same on a --secpol=secure release image (one complete policy)"
 	@echo "make secpol-harvest  regenerate target/secpol/system.secpol with secpolgenerate"
+	@echo "make target-supervisor  J5: kill -9 the authority, fail closed, supervised restart, crash-loop give-up"
 	@echo "make qemu-stop       stop the VM"
 
 node_modules: package.json package-lock.json
@@ -118,6 +119,10 @@ target-secpol-secure:
 
 secpol-harvest:
 	scripts/secpol-harvest.sh
+
+# J5: crash -> fail closed -> supervised restart -> recovery recorded in the ledger
+target-supervisor:
+	tests/target/supervisor.sh
 
 clean:
 	rm -rf build
