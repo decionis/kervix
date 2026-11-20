@@ -141,6 +141,24 @@ int  kx_policy_finalize(kx_policy_t *pol);                    /* validates + bui
  * (domain "kervix.policy/1"). Every grant and capsule binds to this value. */
 void kx_policy_hash(const kx_policy_t *pol, uint8_t out[32]);
 
+/* ---- signed policy bundles (host/kxpolicy) -------------------------------
+ * A policy travels as a canonical BODY, compiled on a workshop host from YAML,
+ * signed by an author and a different approver (bundle format: kxpolicy.h).
+ * The body is rules in source order, NOT finalized; kx_policy_load() parses it
+ * with bounds checks, validates and finalizes it here, so finalize semantics
+ * live in one place (this library) on the vehicle, in host tests and in the
+ * WASM replay engine alike. Little-endian:
+ *   "kervix.policy-body/1" (20)  policy_id[32] (NUL-terminated)  u32 version
+ *   u8 default_verdict  u16 default_reason
+ *   u16 n_preds  { u8 a.src u16 a.id u8 b.src u16 b.id u8 fn u8 op u8 group i64 k } x n_preds   (16 B each)
+ *   u16 n_rules  { id[32] u16 action u8 verdict u16 reason u16 require_reason
+ *                  {u16 off u8 n} x 3 (when, interlock, require)  u32 grant_ttl_ms u32 esc_timeout_ms } x n_rules
+ * Nothing may follow. 0 = loaded (finalized, pol->hash set), -1 = rejected. */
+#define KX_POLICY_BODY_MAGIC "kervix.policy-body/1"
+#define KX_POLICY_BODY_MAX   (KX_POLICY_BODY_HDR + 2u + 16u * KX_MAX_PREDS + 2u + 54u * KX_MAX_RULES)
+#define KX_POLICY_BODY_HDR   (20u + KX_POLICY_ID_LEN + 4u + 1u + 2u)
+int  kx_policy_load(kx_policy_t *pol, const uint8_t *body, uint32_t n);
+
 /* Built-in demo policy (mirrors policies/default.yaml); finalized and hashed. */
 int  kx_policy_build_default(kx_policy_t *pol);
 

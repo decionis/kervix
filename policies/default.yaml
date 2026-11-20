@@ -1,7 +1,7 @@
 # Kervix default policy (source of truth for the demo vehicle).
-# Compiled by host/kxpolicy into a signed .kxp bundle (M2). Until the compiler
-# lands, target/libkxcore/tests/default_policy.c builds the same rules in C.
-# A test will then assert that both produce identical policies.
+# Compiled by host/kxpolicy into a signed .kxp bundle (author + approver).
+# The vehicle's built-in fallback (target/libkxcore/src/policy_default.c) is the
+# same policy in C; host/kxpolicy/test asserts both have the same policy hash.
 #
 # Semantics: rules for an action are tried in order, first match wins;
 # no match -> default (BLOCK, DEFAULT_DENY). `any:` = OR group.
@@ -40,7 +40,7 @@ rules:
   - { id: acc-above-limit, action: adas.acc.set_speed, when: [ param.target_kph > 130 ], verdict: BLOCK, reason: SPEED_ABOVE_LIMIT }
   - id: acc-large-delta
     action: adas.acc.set_speed
-    when: [ absdiff(param.target_kph, acc_target_kph) > 20 ]
+    when: [ "absdiff(param.target_kph, acc_target_kph) > 20" ]   # quoted: the comma would split a YAML flow list
     verdict: ESCALATE
     reason: SPEED_DELTA_LARGE
     escalate: { timeout_ms: 10000, require: [ driver_present == 1 ], require_reason: DRIVER_ABSENT }

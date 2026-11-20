@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 OUT=host/verify/kxcore.wasm
 SRC="wasm/kxw.c wasm/libc_shim.c target/libkxcore/src/catalog_gen.c target/libkxcore/src/policy.c \
-     target/libkxcore/src/policy_default.c target/libkxcore/src/sha256.c target/libkxcore/src/jcs.c \
+     target/libkxcore/src/policy_default.c target/libkxcore/src/policy_load.c target/libkxcore/src/sha256.c target/libkxcore/src/jcs.c \
      target/libkxcore/src/intent.c"
 FLAGS="--target=wasm32 -O2 -std=c11 -ffreestanding -nostdlib -fvisibility=hidden -Wall -Wextra -Werror \
        -Wno-missing-field-initializers -Iwasm/include -Itarget/include \

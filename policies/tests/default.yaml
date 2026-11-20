@@ -1,0 +1,69 @@
+# kxpolicy test fixtures for policies/default.yaml: one case per rule and per
+# constitution invariant, evaluated by the vehicle's own C core (WASM).
+#   node host/kxpolicy/src/main.ts test policies/tests/default.yaml
+policy: ../default.yaml
+base: { speed_dkph: 0, gear: P, park_brake: 1, soc_dpct: 800, charging: 0, driver_present: 1, service_mode: 0,
+        doors_locked_mask: 15, hvac_setpoint_dc: 210, acc_target_kph: 100, charge_limit_pct: 80 }
+cases:
+  # ---- comfort
+  - { name: climate while driving, telemetry: { speed_dkph: 600, gear: D, park_brake: 0 },
+      propose: { action: cabin.climate.set, params: { temp_dc: 225 } }, expect: { verdict: ALLOW, rule: climate-any } }
+  - { name: window fully open at 110 km/h asks the driver, telemetry: { speed_dkph: 1100, gear: D, park_brake: 0 },
+      propose: { action: cabin.window.set, params: { window: rear_left, pos_pct: 100 } }, expect: { verdict: ESCALATE, reason: WINDOW_HIGH_SPEED, rule: window-high-speed } }
+  - { name: window at speed with nobody at the wheel is refused, telemetry: { speed_dkph: 1100, gear: D, park_brake: 0, driver_present: 0 },
+      propose: { action: cabin.window.set, params: { window: rear_left, pos_pct: 100 } }, expect: { verdict: BLOCK, reason: DRIVER_ABSENT, gate: REQUIRE } }
+  - { name: window a little open at speed is fine, telemetry: { speed_dkph: 1100, gear: D, park_brake: 0 },
+      propose: { action: cabin.window.set, params: { window: rear_left, pos_pct: 20 } }, expect: { verdict: ALLOW, rule: window-ok } }
+  - { name: hazards, propose: { action: light.hazard.set, params: { on: true } }, expect: { verdict: ALLOW, rule: hazard-any } }
+  - { name: charge limit, propose: { action: battery.charge_limit.set, params: { pct: 90 } }, expect: { verdict: ALLOW, rule: charge-limit-any } }
+  # ---- body
+  - { name: unlock when parked, propose: { action: body.door.unlock, params: { door: front_left } }, expect: { verdict: ALLOW, rule: door-unlock-parked } }
+  - { name: unlock while moving, telemetry: { speed_dkph: 300, gear: D, park_brake: 0 },
+      propose: { action: body.door.unlock, params: { door: front_left } }, expect: { verdict: BLOCK, reason: VEHICLE_MOVING, rule: door-unlock-moving } }
+  - { name: unlock stopped in D, telemetry: { gear: D, park_brake: 0 },
+      propose: { action: body.door.unlock, params: { door: front_left } }, expect: { verdict: BLOCK, reason: NOT_PARKED, rule: door-unlock-not-parked } }
+  # ---- ADAS
+  - { name: ACC above 130, propose: { action: adas.acc.set_speed, params: { target_kph: 150 } }, expect: { verdict: BLOCK, reason: SPEED_ABOVE_LIMIT, rule: acc-above-limit } }
+  - { name: ACC big jump asks the driver, propose: { action: adas.acc.set_speed, params: { target_kph: 125 } }, expect: { verdict: ESCALATE, reason: SPEED_DELTA_LARGE, rule: acc-large-delta } }
+  - { name: ACC small change, propose: { action: adas.acc.set_speed, params: { target_kph: 110 } }, expect: { verdict: ALLOW, rule: acc-ok } }
+  # ---- privacy
+  - { name: location sharing needs consent, propose: { action: telematics.location.share, params: { recipient: fleet_operator, duration_s: 600 } },
+      expect: { verdict: ESCALATE, reason: DRIVER_CONSENT, rule: location-consent } }
+  # ---- diagnostics / security
+  - { name: clear DTCs in the workshop, telemetry: { service_mode: 1 }, propose: { action: diag.dtc.clear, params: { ecu: powertrain } }, expect: { verdict: ALLOW, rule: dtc-service } }
+  - { name: clear DTCs outside the workshop asks, propose: { action: diag.dtc.clear, params: { ecu: powertrain } }, expect: { verdict: ESCALATE, rule: dtc-consent } }
+  - { name: immobilizer while moving, telemetry: { speed_dkph: 500, gear: D, park_brake: 0 },
+      propose: { action: vehicle.immobilizer.engage }, expect: { verdict: BLOCK, reason: VEHICLE_MOVING, rule: immobilizer-moving } }
+  - { name: immobilizer parked asks, propose: { action: vehicle.immobilizer.engage }, expect: { verdict: ESCALATE, rule: immobilizer-parked } }
+  # ---- chassis calibration
+  - { name: brake calibration in the workshop, telemetry: { service_mode: 1 },
+      propose: { action: chassis.brake.calibration.write, params: { ecu: brake, blob_digest: "sha256:4242424242424242424242424242424242424242424242424242424242424242" } },
+      expect: { verdict: ALLOW, rule: brake-cal-service } }
+  - { name: brake calibration anywhere else,
+      propose: { action: chassis.brake.calibration.write, params: { ecu: brake, blob_digest: "sha256:4242424242424242424242424242424242424242424242424242424242424242" } },
+      expect: { verdict: BLOCK, reason: SERVICE_MODE_REQUIRED, rule: brake-cal-deny } }
+  # ---- OTA (UN R156)
+  - { name: OTA at highway speed (the injection scene), telemetry: { speed_dkph: 1100, gear: D, park_brake: 0 },
+      propose: { action: ota.ecu.flash, params: { ecu: brake, image_digest: "sha256:0101010101010101010101010101010101010101010101010101010101010101" } },
+      expect: { verdict: BLOCK, reason: R156_NOT_SAFE_STATE, rule: ota-block-moving } }
+  - { name: OTA stopped but park brake off, telemetry: { park_brake: 0 },
+      propose: { action: ota.ecu.flash, params: { ecu: brake, image_digest: "sha256:0101010101010101010101010101010101010101010101010101010101010101" } },
+      expect: { verdict: BLOCK, reason: R156_NOT_SAFE_STATE, rule: ota-block-not-parked } }
+  - { name: OTA parked with energy asks the driver,
+      propose: { action: ota.ecu.flash, params: { ecu: brake, image_digest: "sha256:0101010101010101010101010101010101010101010101010101010101010101" } },
+      expect: { verdict: ESCALATE, reason: DRIVER_CONSENT, rule: ota-escalate } }
+  - { name: OTA parked at 20 % and not charging, telemetry: { soc_dpct: 200 },
+      propose: { action: ota.ecu.flash, params: { ecu: brake, image_digest: "sha256:0101010101010101010101010101010101010101010101010101010101010101" } },
+      expect: { verdict: BLOCK, reason: R156_INSUFFICIENT_POWER, rule: ota-low-power } }
+  - { name: OTA at 20 % but charging asks the driver, telemetry: { soc_dpct: 200, charging: 1 },
+      propose: { action: ota.ecu.flash, params: { ecu: brake, image_digest: "sha256:0101010101010101010101010101010101010101010101010101010101010101" } },
+      expect: { verdict: ESCALATE, rule: ota-escalate } }
+  # ---- constitution (runs before any rule; a policy cannot override it)
+  - { name: K1 stale telemetry blocks a safety action, env: { age_ms: 120 },
+      propose: { action: body.door.unlock, params: { door: front_left } }, expect: { verdict: BLOCK, reason: TELEMETRY_STALE, gate: K1_STALE } }
+  - { name: K2 implausible state (P at 60 km/h), telemetry: { speed_dkph: 600 },
+      propose: { action: body.door.unlock, params: { door: front_left } }, expect: { verdict: BLOCK, reason: TELEMETRY_IMPLAUSIBLE, gate: K2_IMPLAUSIBLE } }
+  - { name: "K3: no audit, no action", env: { ledger_ok: false },
+      propose: { action: body.door.unlock, params: { door: front_left } }, expect: { verdict: BLOCK, reason: LEDGER_PRESSURE, gate: K3_LEDGER } }
+  - { name: K4 out-of-range parameter, propose: { action: cabin.climate.set, params: { temp_dc: 900 } },
+      expect: { verdict: BLOCK, reason: PARAM_INVALID, gate: K4_VALIDATION } }

@@ -22,6 +22,18 @@ static uint8_t        HASH[32];
 
 EXPORT("kxw_init") int kxw_init(void) { return kx_policy_build_default(&POL); }
 EXPORT("kxw_policy_hash") const uint8_t *kxw_policy_hash(void) { return POL.hash; }
+/* Load a policy body (written by JS into the kxw_body() buffer) in place of the
+ * current policy: the same loader and finalize that run in kervixd. 0 = ok;
+ * on failure the built-in policy is restored and -1 returned. */
+static uint8_t BODY[KX_POLICY_BODY_MAX];
+EXPORT("kxw_body") uint8_t *kxw_body(void) { return BODY; }
+EXPORT("kxw_body_max") uint32_t kxw_body_max(void) { return KX_POLICY_BODY_MAX; }
+EXPORT("kxw_load") int kxw_load(uint32_t n) {
+    if (n <= KX_POLICY_BODY_MAX && kx_policy_load(&POL, BODY, n) == 0) return 0;
+    kx_policy_build_default(&POL);
+    return -1;
+}
+EXPORT("kxw_rule_count") uint32_t kxw_rule_count(void) { return POL.n_rules; }
 EXPORT("kxw_str") char *kxw_str(void) { return STR; }
 EXPORT("kxw_hash") const uint8_t *kxw_hash(void) { return HASH; }
 EXPORT("kxw_catalog_sha") const char *kxw_catalog_sha(void) { return KX_CATALOG_SHA256; }
