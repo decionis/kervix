@@ -102,3 +102,8 @@ These notes are the gotchas found while building Kervix. Each one becomes a call
 - Uid separation for a node you write: give the gateway its own uid and set the node's group (`attr.gid`) instead of running the gateway as root. Running as root would let it signal or `/proc`-read the daemons, because those are uid matters, not secpol.
 - Escalation push with no polling: each HMI connection gets a thread that `MsgReceivePulse()`s a private channel registered with the authority (`MsgRegisterEvent` + subscribe devctl). A `TimerTimeout` every 2 s checks that the subscription is still alive and resubscribes after an authority restart.
 - Keep the gateway dumb: it forwards a replayed grant instead of filtering it. The authority refuses it **and records the attempt**. A smart gateway would hide attacks from the ledger.
+
+## On-target selftest (kx-selftest)
+- A selftest that runs each role *as that role* (`on -T agentgw_t -u 400:400 …`) tests the deployment, not just the code. It caught a harness bug in which the agent's type tried to move the simulator. secpol refused it and logged the refusal, which is exactly right.
+- `popen()` + a background child: the child can inherit popen's pipe and keep it open, so `pclose()`/`fread()` block until the child exits. Start background jobs with `system("… < /dev/null > file 2>&1 &")` and poll a marker in the file.
+- Report SKIP, not PASS, for kernel-enforcement checks on an image without a policy (`on -T` fails there), so a table can never claim protection that was not active.

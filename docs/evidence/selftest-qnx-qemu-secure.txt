@@ -1,0 +1,38 @@
+kx-selftest: Kervix on QNX kervix-qemu 8.0.0 2026/10/30-09:10:05EDT x86pc x86_64
+             security policy: in force
+
+  #  journey   check                                                          result   time
+  1  boot      vsimd, kervixd, sdv_actuatord running                          PASS     62 ms
+  2  boot      daemons dropped privilege after init (*_run_t types)           PASS      0 ms
+  3  boot      kx-supervisor watches the authority                            PASS      0 ms
+  4  boot      4 network gateways, each its own type (agent/hmi/observer/world) PASS      0 ms
+  5  boot      signed ledger healthy (K3: no audit, no action)                PASS     40 ms
+  6  J1        driving: agent sets cabin 22.5 C -> ALLOW, actuated            PASS   3215 ms
+  7  J1        vehicle reports the new setpoint (telemetry)                   PASS    128 ms
+  8  J2        brake ECU flash at speed -> BLOCK R156_NOT_SAFE_STATE, nothing actuated PASS     81 ms
+  9  J2        window fully open above 80 km/h -> ESCALATE to the driver, not actuated PASS   9842 ms
+ 10  J3        parked + charging: OTA -> ESCALATE, the HMI sees it            PASS   9120 ms
+ 11  J3        driver approves -> fresh grant -> actuated                     PASS      0 ms
+ 12  J3        vehicle reports the OTA flash in progress                      PASS    229 ms
+ 13  J3        driver denies location sharing -> BLOCK HUMAN_DENIED           PASS   8226 ms
+ 14  J3        nobody answers -> BLOCK ESCALATION_TIMEOUT (fail closed)       PASS  10226 ms
+ 15  grants    replayed grant -> GRANT_SPENT (single use)                     PASS    159 ms
+ 16  grants    forged grant (1 MAC bit) -> GRANT_MAC                          PASS     30 ms
+ 17  grants    grant presented after its TTL -> GRANT_EXPIRED                 PASS    733 ms
+ 18  grants    granted door A, actuate door B -> GRANT_PARAMS                 PASS     31 ms
+ 19  grants    grant presented by another process -> GRANT_BINDING            PASS     49 ms
+ 20  grants    car drives off between grant and redeem -> GRANT_INTERLOCK     PASS    181 ms
+ 21  K1/K2     telemetry stops -> BLOCK TELEMETRY_STALE (K1)                  PASS    363 ms
+ 22  K1/K2     spoofed state (P at 60 km/h) -> BLOCK TELEMETRY_IMPLAUSIBLE (K2) PASS    589 ms
+ 23  K1/K2     action outside the catalog -> refused                          PASS    259 ms
+ 24  J4        kx-rogue as the deployed agent: 0/10 attacks open, 10 kernel-refused PASS     83 ms
+ 25  J4        raw actuator path: kernel refuses the connect (EPERM)          PASS     49 ms
+ 26  J5        authority killed (-9): actuation locked while it is gone       PASS    199 ms
+ 27  J5        supervisor restarts it: deciding again after 122 ms (wall, incl. tooling) PASS     54 ms
+               | kx-supervisor: authority back in 83.2 ms after SIGKILL (restart #1, pid 4141079; spawn->ready 78.9 ms)
+ 28  secpol    no secpol refusals for any legitimate role (red team excluded) PASS    197 ms
+ 29  J6        signed dossier exported for offline verification (kervix-verify) PASS     68 ms
+               | exported 35 capsule(s) (seq 1..35, head 50b268112809b540…) to /tmp/kx-selftest-dossier
+
+kx-selftest: 29/29 PASS, 0 FAIL, 0 SKIP in 44.9 s
+SELFTEST RESULT: PASS

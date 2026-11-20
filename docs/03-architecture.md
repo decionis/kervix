@@ -486,6 +486,22 @@ Measurement:
 
 ---
 
+### 11.1 `kx-selftest` — implemented (product feature X2)
+
+`/system/bin/kervix/kx-selftest [-q]` runs on the target and prints one PASS/FAIL table, with one row per safety or security claim. It exits with the number of failed checks.
+- **Real roles, nothing mocked:** each step runs the real tools under the role's own secpol type and uid: the agent as `agentgw_t`/uid 400, the driver HMI as `hmigw_t`, the operator as `operator_t`, and `kx-rogue` as the agent.
+- **What it covers:**
+  - **boot:** daemons typed and privilege dropped, the supervisor running, 4 typed gateways, the ledger healthy.
+  - **J1–J3:** ALLOW in traffic; BLOCK at speed; window ESCALATE; approve, deny and timeout.
+  - **Grants:** replay, forge, expiry, params, binding, interlock.
+  - **Constitution:** K1 stale, K2 spoofed, outside the catalog.
+  - **J4:** `kx-rogue` and the raw path.
+  - **J5:** `kill -9` and supervised restart.
+  - **System-wide:** zero secpol refusals for legitimate roles.
+  - **J6:** the signed dossier is exported, and the host verifies it offline.
+- **Results on QNX 8.0 / QEMU (TCG):** **29/29 PASS** on both the dev image (`make target-selftest`) and the **`--secpol=secure` release image** (`make target-selftest-secure`), in ~65 s. Both dossiers were VERIFIED offline (17/17 decisions replayed). Tables: `docs/evidence/selftest-qnx-qemu-{open,secure}.txt`. RPi4 is pending hardware.
+- On an image without a policy, the kernel-enforcement checks report SKIP rather than PASS.
+
 ## 12. Threat model (STRIDE summary)
 
 | Threat | Example | Control |

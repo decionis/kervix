@@ -39,6 +39,7 @@ if(KX_QNX)
   add_subdirectory(target/kx-rogue)
   add_subdirectory(target/kx-supervisor)
   add_subdirectory(target/kxgw)
+  add_subdirectory(target/kx-selftest)
 endif()
 
 if(KX_BUILD_TESTS)
