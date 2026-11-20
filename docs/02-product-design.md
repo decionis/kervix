@@ -167,7 +167,7 @@ Global "constitution" invariants are evaluated before policy and policy cannot o
 **J3 — Human oversight (ESCALATE).** Parked and charging, the agent proposes the OTA again. Kervix ESCALATEs. The HMI shows "Install brake ECU update (irreversible, ~4 min, vehicle unusable)". The driver approves. A `resolved` capsule records `approver: human`, then a grant is issued and executed.
 
 **J4 — Red team (kernel enforcement).** `kx-rogue` runs as the agent's secpol type:
-- Opening `/dev/sdv/actuators/raw` fails with `EACCES` from the kernel.
+- Opening `/dev/sdv/actuators/raw` fails with `EPERM` from the kernel (`procnto` refuses the channel connect).
 - A forged grant gets `KX_E_MAC`.
 - A replayed grant gets `KX_E_SPENT`.
 - Attaching a fake `/dev/kervix/intent` is refused by secpol.

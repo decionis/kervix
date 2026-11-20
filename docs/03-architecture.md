@@ -65,44 +65,56 @@
 | `kx-supervisor` | `supervisor_t` | — | spawn `kervixd`; watch death | spawn | 60 |
 | `kx-rogue` | `agentgw_t` | (tries to attach — denied) | same as agent gateway | none | 10 |
 
-### 3.1 Per-channel secpol types (the core QNX bonus feature)
+### 3.1 Per-channel secpol types (the core QNX bonus feature) — verified by spike S1/S2
 
-`kervixd` creates **four dispatch channels** (four `dispatch_t`, each with its own fixed-size thread pool). Each path is attached with `secpol_resmgr_attach()`, and the policy assigns a **channel type per path**:
+`kervixd` creates **one dispatch channel per trust level** (four `dispatch_t`, each with its own fixed-size thread pool). It attaches each path with `secpol_resmgr_attach()`. The policy types each channel with a **trailing type on `allow_attach`**. Spike S1 proved that a single process can own several differently typed channels this way.
 
 ```
-# target/secpol/kervix.secpol (sketch — exact grammar validated in [SPIKE-1])
-type kervix_t; type vsim_t; type actuator_t; type agentgw_t; type hmigw_t;
+# target/secpol/kervix.secpol (grammar verified with secpolcompile in S1)
+type kervix_t; type kervix_run_t; type vsim_t; type actuator_t; type agentgw_t; type hmigw_t;
 type obsgw_t; type operator_t; type supervisor_t;
-type kx_agent_ch_t; type kx_act_ch_t; type kx_hmi_ch_t; type kx_admin_ch_t; type act_bus_ch_t;
+type kx_agent_ch_t; type kx_act_ch_t; type kx_hmi_ch_t; type kx_admin_ch_t;
+type act_bus_ch_t; type act_raw_ch_t; type vsim_ch_t;
 
-allow_attach kervix_t   { /dev/kervix/intent /dev/kervix/dossier /dev/kervix/stats
-                          /dev/kervix/redeem /dev/kervix/escalations /dev/kervix/policy };
-allow_attach vsim_t     { /dev/sdv/telemetry /dev/sdv/sim/actuate };
-allow_attach actuator_t { /dev/sdv/actuators };
+# who may attach which path, and the type the resulting channel gets
+allow_attach kervix_t   /dev/kervix/intent      kx_agent_ch_t;
+allow_attach kervix_t   /dev/kervix/dossier     kx_agent_ch_t;
+allow_attach kervix_t   /dev/kervix/stats       kx_agent_ch_t;
+allow_attach kervix_t   /dev/kervix/redeem      kx_act_ch_t;
+allow_attach kervix_t   /dev/kervix/escalations kx_hmi_ch_t;
+allow_attach kervix_t   /dev/kervix/policy      kx_admin_ch_t;
+allow_attach actuator_t /dev/sdv/actuators      act_bus_ch_t;
+allow_attach actuator_t /dev/sdv/actuators/raw  act_raw_ch_t;
+allow_attach vsim_t     /dev/sdv/telemetry      vsim_ch_t;
 
-# channel typing: path -> channel type
-channel kervix_t /dev/kervix/intent      kx_agent_ch_t;
-channel kervix_t /dev/kervix/redeem      kx_act_ch_t;
-channel kervix_t /dev/kervix/escalations kx_hmi_ch_t;
-channel kervix_t /dev/kervix/policy      kx_admin_ch_t;
-channel actuator_t /dev/sdv/actuators    act_bus_ch_t;
-
+# topology: the kernel refuses every connect not listed here
 allow { agentgw_t hmigw_t obsgw_t operator_t } kx_agent_ch_t:channel connect;
 allow actuator_t                               kx_act_ch_t:channel connect;
 allow { hmigw_t operator_t }                   kx_hmi_ch_t:channel connect;
 allow operator_t                               kx_admin_ch_t:channel connect;
 allow { agentgw_t operator_t }                 act_bus_ch_t:channel connect;
-allow actuator_t  vsim_t:channel connect;       # /dev/sdv/sim/actuate — ONLY actuator moves the car
-allow kervix_t    vsim_t:channel connect;       # telemetry
+# act_raw_ch_t: deliberately no connect rule for any agent-domain type
+allow { kervix_t kervix_run_t actuator_t }     vsim_ch_t:channel connect;
+
+# one-way privilege drop after init (both rules are required; S1 finding)
+derive_type kervix_t run kervix_run_t;
+allow kervix_t self:ability { settypeid:kervix_run_t };
 ```
 
-Result: an agent-type process that tries to `open("/dev/kervix/redeem")`, `open("/dev/sdv/sim/actuate")` or attach `/dev/kervix/intent` is refused **by procnto**. That is the "kernel boundary" claim, made true.
+**Verified behaviour (S1, QNX 8.0, every client running as uid 0):**
+- A connect to a channel type the caller isn't allowed fails in `procnto` with **`EPERM`**. Root is not exempt.
+- Attaching a path without an `allow_attach` rule fails with **`EACCES`**. This covers both path squatting by an agent and a server attaching something unlisted.
+- Allowed connects and devctls work normally. A `MsgRegisterEvent` pulse is delivered across a typed channel.
 
-**Defence in depth inside handlers:** each handler also checks the client's secpol type id, obtained with `ConnectClientInfoExt(..., _NTO_CLIENTINFO_GETTYPEID)` **[SPIKE-2]**. Fallback if it is unavailable: a distinct uid/gid per process + node ACLs + `iofunc_open_default()` permission checks.
+**Enforcement modes:**
+- **Development (S1):** `mkqnximage --secpol=open` + base policy + `type <t> restricted` in the `secpolgenerate` config. Kervix types are held to the policy and the rest of the system stays permissive. Reproduce with `spikes/s1-secpol/run.sh`.
+- **Demo/submission (M2):** `--secpol=secure`, with a complete policy. System-service rules are harvested with `secpolgenerate`, and Kervix rules are written by hand.
 
-**Privilege drop:** after attaching, `kervixd` calls `secpol_transition_type()` and `procmgr_ability()` to drop spawn, mem_phys, io, setuid and similar. Recorded in the selftest.
+**Caller identity in handlers (S2):** the kernel stamps the sender's secpol type into **every message's `ctp->info.type_id`**. Handlers check it per request at zero extra cost, and it can't be forged.
+- Note: on 8.0, `ConnectClientInfoExtraArgs(..., &type_id)` returned `SECPOL_INVALID_TYPE` in our test. Do not rely on it.
+- Fallback without a policy: a distinct uid/gid per process + node ACLs + `iofunc_open_default()`.
 
----
+**Privilege drop:** after attaching, `kervixd` calls `secpol_transition_type(NULL, NULL, 0)`. This switches it to `kervix_run_t`, which holds no attach or settypeid abilities. Without a policy, the `procmgr_ability()` fallback drops spawn, mem_phys, io, setuid and similar. Recorded in the selftest.
 
 ## 4. IPC protocol (devctl on resource-manager nodes)
 
@@ -412,7 +424,7 @@ Measurement:
 | **R**epudiation | "The AI didn't do that" / "I didn't approve" | Actor id + intent hash + human approver id in signed capsules |
 | **I**nfo disclosure | Location sharing | Privacy-class actions ESCALATE; dossier holds digests, not raw payloads |
 | **D**oS | Intent flood from agent | Rate limiter + low-priority agent channel + separate pools; HMI unaffected (measured) |
-| **E**levation | Agent calls actuator raw path | Channel type `act_raw_ch_t` connectable by nobody in the agent domain; kernel `EACCES` |
+| **E**levation | Agent calls actuator raw path | Channel type `act_raw_ch_t` connectable by nobody in the agent domain; kernel `EPERM` (verified in S1) |
 | **Prompt injection** (AI-specific) | Malicious document instructs a dangerous action | Irrelevant to enforcement: the action still must pass policy on live state |
 | Replay | Re-use captured grant | Single-use table + TTL + proposer binding |
 | TOCTOU | Vehicle starts moving after grant | Interlock re-check at redeem |
