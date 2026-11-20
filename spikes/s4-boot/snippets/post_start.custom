@@ -1,0 +1,12 @@
+# Kervix S4 spike: start the three gateway roles at boot, each with its own
+# secpol type (when policies are in use) and scheduling priority
+# (agent 10 < hmi 30; observer 5): see docs/03-architecture.md section 3.
+#if defined(OPT_SECPOL_no)
+on -p 10 /system/bin/kervix/s4_gw agent 7301 &
+on -p 30 /system/bin/kervix/s4_gw hmi 7302 &
+on -p 5 /system/bin/kervix/s4_gw observer 7303 &
+#else
+on -T kxgw_agent_t -p 10 /system/bin/kervix/s4_gw agent 7301 &
+on -T kxgw_hmi_t -p 30 /system/bin/kervix/s4_gw hmi 7302 &
+on -T kxgw_obs_t -p 5 /system/bin/kervix/s4_gw observer 7303 &
+#endif
