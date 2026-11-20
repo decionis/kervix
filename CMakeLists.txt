@@ -25,19 +25,21 @@ endif()
 add_compile_options(-Wall -Wextra -Werror -Wshadow -Wstrict-prototypes -Wpointer-arith -Wformat=2)
 
 add_subdirectory(target/libkxcore)
+add_subdirectory(target/libkxsim)
 
 if(KX_QNX)
   add_subdirectory(spikes/s1-secpol)
   add_subdirectory(spikes/s3-qcrypto)
   add_subdirectory(spikes/s4-boot)
   # On-target components are added as they are implemented (M1+):
-  # add_subdirectory(target/vsimd)
+  add_subdirectory(target/vsimd)
   # add_subdirectory(target/kervixd)
   # add_subdirectory(target/sdv_actuatord)
-  # add_subdirectory(target/kxctl)
+  add_subdirectory(target/kxctl)
 endif()
 
 if(KX_BUILD_TESTS)
   enable_testing()
   add_subdirectory(target/libkxcore/tests)
+  add_subdirectory(target/libkxsim/tests)
 endif()
