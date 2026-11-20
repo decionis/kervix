@@ -35,6 +35,8 @@ jobs:
             -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
           cmake --build build/asan
           ctest --test-dir build/asan --output-on-failure
+      - name: Telemetry seqlock under ThreadSanitizer
+        run: mkdir -p build && make -s tsan
       - name: Spike S5 — AAC draft-04 + COSE conformance vs @decionis/verify
         run: npm run -s spike:s5
       - name: Intent parity — libkxcore (C) vs @decionis/verify

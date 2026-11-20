@@ -40,3 +40,10 @@ These notes are the gotchas found while building Kervix. Each one becomes a call
 - Start each service with `on -T <type> -p <prio> <cmd> &`. Types and priorities are applied before `main()`, and the process can confirm both with `secpol_type_id()` and `pthread_getschedparam()`.
 - QEMU user networking (`-netdev user,hostfwd=tcp:127.0.0.1:7301-:7301`) is enough for host ⇄ target TCP. No bridge or tap is needed, so it works on macOS.
 
+## Periodic publisher + subscribers (vsimd)
+- A periodic job is a timer that delivers a **pulse** to a private channel: `timer_create(CLOCK_MONOTONIC, &pulse_ev)`, then `MsgReceivePulse()` on a SCHED_FIFO thread. There are no signals and no sleeping loops.
+- Server-to-client doorbell: the client does `MsgRegisterEvent(&ev, fd)` and sends the event in a devctl. The server keeps the `rcvid` and later calls `MsgDeliverEvent(rcvid, &ev)`. Delivery failure means the client is gone, so drop it. Also drop it in `close_ocb`.
+- Bulk data goes through `shm_open` + a seqlock, not messages. Map it `PROT_READ` in readers, so a compromised reader cannot forge state. Copy with `__atomic` relaxed word loads so ThreadSanitizer stays quiet.
+- Resource-manager text nodes: `io_write` reads the payload with `resmgr_msgget(ctp, buf, n, sizeof msg->i)`; `io_read` replies with `MsgReply` and returns `_RESMGR_NOREPLY`. A one-line-per-open reply (EOF when `offset > 0`) keeps `cat` and `echo` usable from the shell.
+- gcc 12 `-Werror=maybe-uninitialized` fires on structs filled through a pointer by inline helpers. Zero-initialize them.
+

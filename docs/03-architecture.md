@@ -216,27 +216,37 @@ The agent's `AWAIT` is a **deferred MsgReply**: the gateway thread stays blocked
 
 ---
 
-## 6. Telemetry
+## 6. Telemetry — implemented (M1): `vsimd`, `libkxsim`, `kervix/seqlock.h`
 
-- `vsimd` runs a 100 Hz `timer_create` with pulse delivery. Each tick integrates the vehicle model (drive-cycle replay or scenario-directed) and publishes a `kx_telemetry_t` snapshot.
-- **Transport:** `shm_open("/kervix_telemetry")` holding a **seqlock** (even/odd sequence). vsimd maps it RW. kervixd maps it **read-only** (`PROT_READ`). After each publish, vsimd sends a pulse to subscribers registered via `/dev/sdv/telemetry` devctl `SUBSCRIBE` (sigevent registered with `MsgRegisterEvent` **[SPIKE-1]**).
-- **No PPS:** PPS is discontinued in QNX 8.0.
+- **Model:** `libkxsim` is a portable, integer-only vehicle model and is host-testable.
+  - It is physically consistent by construction: ≤ 2.5 m/s² acceleration, ≤ 3 m/s² braking, shifts out of or into P only at standstill, doors auto-lock above 15 km/h.
+  - Scenarios: `park`, `charging`, `city` (stop-and-go), `highway` (110 km/h, capped by ACC), `drivecycle`. The drive cycle is a synthetic WLTP-like loop generated for Kervix, not the regulatory trace.
+  - Actuation effects for every catalog action. OTA flashing immobilizes the car for 8 s; the immobilizer stops it.
+- **Daemon:** `vsimd` runs a `CLOCK_MONOTONIC` timer pulse at 100 Hz on a SCHED_FIFO 50 thread. Each tick steps the model, publishes, and rings subscribers.
+- **Transport:** shared memory `/kervix_telemetry` (`kx_telemetry_shm_t`) with a **single-writer seqlock**.
+  - The payload is copied with relaxed atomic word loads (race-free under C11; ThreadSanitizer clean).
+  - Reads are bounded: the caller fails closed after N retries.
+  - Readers map the segment **read-only**.
+  - The segment survives `vsimd` restarts, and the sequence number keeps increasing.
+- **Doorbell:** clients `MsgRegisterEvent()` a pulse, then `KX_DCMD_TEL_SUBSCRIBE` on `/dev/sdv/telemetry`. Dead subscribers are dropped on delivery failure or close. **No PPS**: PPS is discontinued in 8.0.
+- **Paths:** three dispatch channels, so secpol can type each one separately (S1):
+  - `/dev/sdv/telemetry`: read a JSON line; devctl SUBSCRIBE / UNSUBSCRIBE / GET.
+  - `/dev/sdv/sim/ctl`: text commands (`scenario`, `set`, `driver`, `service`, `stall`, `spoof`, `status`, `help`).
+  - `/dev/sdv/sim/actuate`: devctl APPLY, for `sdv_actuatord` only.
+- **Demo hooks:**
+  - `stall 1` stops publishing, so telemetry goes stale and K1 blocks.
+  - `spoof <field> <v>` publishes an inconsistent value, so K2 blocks. The model itself stays consistent.
+- **Measured on QNX 8.0 (QEMU/TCG):**
+  - 100.2 Hz with no sequence gaps or regressions.
+  - Max sample age 4.2 ms.
+  - 0 torn reads in 314k concurrent reads.
+  - Acceptance: `tests/target/vsim.sh`, 16/16.
 
 ```c
-typedef struct {
-  uint64_t seq, mono_ns;
-  int32_t  speed_dkph;        /* Vehicle.Speed ×10 */
-  uint8_t  gear;              /* Vehicle.Powertrain.Transmission.SelectedGear: P R N D */
-  uint8_t  park_brake;        /* Vehicle.Chassis.ParkingBrake.IsEngaged */
-  int16_t  soc_dpct;          /* Vehicle.Powertrain.TractionBattery.StateOfCharge.Current ×10 */
-  uint8_t  charging, driver_present, service_mode, doors_locked_mask;
-  int16_t  cabin_temp_dc; uint8_t window_pos_pct[4]; int16_t acc_target_kph;
-} kx_telemetry_t;
+typedef struct { uint64_t seq, mono_ns; int32_t v[KX_TF__COUNT]; } kx_telemetry_t;  /* fields from catalog.yaml (VSS-named) */
 ```
 
-Freshness: `now - mono_ns > 50 ms` → `TELEMETRY_STALE` (K1). Plausibility (K2): gear∈{P} ∧ speed>2 kph; |Δspeed| > physical max per tick; seq not monotonic; SoC outside range.
-
----
+Freshness (K1): `now - mono_ns > 50 ms` → `TELEMETRY_STALE`. Plausibility (K2) is `kx_telemetry_plausible()`: catalog ranges, plus gear P with speed > 2 km/h is implausible.
 
 ## 7. Policy language and bundle
 
