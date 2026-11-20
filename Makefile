@@ -1,6 +1,6 @@
 # Kervix top-level shortcuts. Host targets run natively. QNX targets run in
 # the qnx-build container (docker/qnx-build.sh), which works on macOS and Linux.
-.PHONY: help host asan wasm test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 target-escalation target-ledger target-secpol target-secpol-secure secpol-harvest target-supervisor target-kxgw target-bridge target-agent fuzz-wire tsan clean
+.PHONY: help host asan wasm test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 target-escalation target-ledger target-secpol target-secpol-secure secpol-harvest target-supervisor target-kxgw target-bridge target-agent target-selftest target-selftest-secure fuzz-wire tsan clean
 
 ARCHES ?= x86_64 aarch64le
 KX_CORE_TESTS = libkxcore/tests/test_catalog libkxcore/tests/test_policy libkxcore/tests/test_sha256 \
@@ -29,6 +29,8 @@ help:
 	@echo "make target-kxgw     host <-> target gateways over TCP: roles, escalation push, hostile input"
 	@echo "make target-bridge   host bridge (REST + WebSocket) end to end against the QNX gateways"
 	@echo "make target-agent    scripted agent scenes 1-3 against QNX, dossier verified"
+	@echo "make target-selftest kx-selftest on QNX (dev image) + offline verify of its dossier"
+	@echo "make target-selftest-secure  the same on the --secpol=secure release image"
 	@echo "make qemu-stop       stop the VM"
 
 node_modules: package.json package-lock.json
@@ -138,6 +140,13 @@ target-bridge: node_modules
 # scripted agent (demo scenes 1-3) through the bridge against QNX; dossier verified
 target-agent: node_modules
 	tests/target/agent.sh
+
+# kx-selftest: every journey + attack ON the target, one PASS/FAIL table; dossier verified here
+target-selftest:
+	tests/target/selftest.sh open
+
+target-selftest-secure:
+	tests/target/selftest.sh secure
 
 # release image: --secpol=secure, kervix + monitor + harvested system policy
 target-secpol-secure:
