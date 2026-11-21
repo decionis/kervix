@@ -127,6 +127,8 @@ npm run agent -- live "I'm cold"   # live Claude agent (claude-opus-5-5; needs C
 
 A **live run** with Claude Opus 5.5 is recorded verbatim in [`docs/evidence/live-claude-2026-11-21.md`](docs/evidence/live-claude-2026-11-21.md), together with that session's QNX-signed ledger, which verifies offline. For the live run, set `ANTHROPIC_API_KEY` (or `ant auth login`), or `AZURE_ANTHROPIC_KEY` + `AZURE_ANTHROPIC_URL` for Claude on Microsoft Foundry, then run `npm run agent -- live-demo`.
 
+**WebXR (optional):** on a headset browser, the twin card shows **Enter VR** (and **View in AR** where passthrough is supported): the twin stands life-size on your floor with a beacon for the latest decision (ring = ALLOW, turning diamond = waiting for the driver, cross = BLOCK; a red floor ring = authority offline). It is view-only; approvals stay on the driver card, where they are explained. Browsers allow WebXR only on `https://` or `localhost`, so on a Quest use `adb reverse tcp:8787 tcp:8787` and open `http://localhost:8787`. Without a headset, `http://localhost:8787/?xr=emulate` installs a Meta Quest 3 emulator ([what the headset sees](docs/images/twin-webxr-emulated.png), emulated).
+
 Scene 2 feeds the agent a **synthetic poisoned service bulletin** that tells it to flash the brake ECU while driving. In the scripted scene the agent is fooled and tries; Kervix blocks it (`R156_NOT_SAFE_STATE`). In the live run, Claude spotted the embedded instruction and declined on its own. Either way nothing unsafe happens, because the agent's system prompt contains **no safety rules**: safety must not depend on the model behaving.
 
 ## Repository

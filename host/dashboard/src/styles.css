@@ -43,6 +43,9 @@ button { font: inherit; color: inherit; }
 .offline { background: rgba(13, 13, 13, 0.62); }
 .offline .banner { border: 2px solid var(--critical); color: var(--ink-1); background: rgba(26, 26, 25, 0.92); padding: 14px 22px; border-radius: 10px; text-align: center; }
 .offline .banner b { display: block; font-size: 22px; letter-spacing: 0.04em; }
+.xrbar { position: absolute; right: 14px; top: 14px; display: flex; gap: 8px; }
+.xrbar button { background: rgba(26, 26, 25, 0.9); color: var(--ink-1); border: 1px solid var(--ring); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.xrbar button:hover { border-color: var(--ink-muted); }
 .toast { position: absolute; left: 14px; bottom: 14px; display: flex; align-items: center; gap: 10px; background: rgba(26, 26, 25, 0.9); border: 1px solid var(--ring); padding: 8px 12px; border-radius: 8px; font-size: 13px; }
 .fakebar { background: var(--warning); color: var(--ink-on-warning); text-align: center; font-weight: 650; padding: 4px; font-size: 13px; }
 

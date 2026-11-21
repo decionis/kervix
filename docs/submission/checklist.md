@@ -50,4 +50,4 @@
 ## Optional (only if time allows before the freeze)
 
 - Rate limiter per actor × action (F12, a *Could* item).
-- WebXR toggle for the 3D twin (*Could*, 3-hour time box).
+- ✅ WebXR toggle for the 3D twin (*Could*, 3-hour time box): done, view-only, checked in a headset emulator; not yet on a physical headset.

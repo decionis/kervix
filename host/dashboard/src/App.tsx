@@ -58,7 +58,7 @@ export function App() {
         <section className="col">
           <div className="card twin">
             <Suspense fallback={<div className="overlay">loading 3D…</div>}>
-              <CarTwin tel={state.telemetry.tel} offline={offline} />
+              <CarTwin tel={state.telemetry.tel} offline={offline} verdict={last?.verdict ?? null} pending={state.escalations.length} />
             </Suspense>
             {showToast && last && (
               <div className="toast" aria-live="polite">
