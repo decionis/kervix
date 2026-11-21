@@ -3,7 +3,7 @@
 [![host CI](https://github.com/decionis/kervix/actions/workflows/host.yml/badge.svg?branch=master)](https://github.com/decionis/kervix/actions/workflows/host.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![QNX 8.0](https://img.shields.io/badge/QNX-8.0-0a7bbb.svg)](https://www.qnx.com/developers/docs/8.0/)
-[![secpol: secure image 29/29](https://img.shields.io/badge/selftest%20(secure%20image)-29%2F29-2ea44f.svg)](docs/evidence/selftest-qnx-qemu-secure.txt)
+[![secpol: secure image 29/29](https://img.shields.io/badge/selftest%20%28secure%20image%29-29%2F29-2ea44f.svg)](docs/evidence/selftest-qnx-qemu-secure.txt)
 [![Node ≥ 22.18](https://img.shields.io/badge/node-%E2%89%A5%2022.18-339933.svg)](package.json)
 [![Evidence: AAC draft-04](https://img.shields.io/badge/evidence-AAC%20draft--04-6f42c1.svg)](docs/03-architecture.md#82-capsules-aac-draft-04--mapping-frozen-by-spike-s5)
 [![QNX Global Hackathon 2026](https://img.shields.io/badge/QNX%20Hackathon-2026-orange.svg)](https://qnx.devpost.com)
