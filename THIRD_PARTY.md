@@ -20,9 +20,9 @@ Kervix itself is Apache-2.0 (see [LICENSE](LICENSE)). It uses the following thir
 | Synthetic drive cycle, scenarios, documents (`scenarios/`) | Written for Kervix; no third-party data | Apache-2.0 |
 | 3D vehicle | Procedural (React Three Fiber primitives); no models, textures or brands | Apache-2.0 |
 
-## npm packages used at run time (77)
+## npm packages used at run time (113)
 
-Licences: MIT (61), Apache-2.0 (9), ISC (4), Unlicense (1), BSD-3-Clause (1), MIT (LICENSE file) (1).
+Licences: MIT (85), Apache-2.0 (12), ISC (7), MIT (LICENSE file) (5), (Apache-2.0 AND BSD-3-Clause) (1), (CC-BY-4.0 AND MIT) (1), Unlicense (1), BSD-3-Clause (1).
 
 These run in the host tools (bridge, agent, verifier, policy compiler) or are bundled into the dashboard.
 
@@ -31,13 +31,26 @@ These run in the host tools (bridge, agent, verifier, policy compiler) or are bu
 | @anthropic-ai/foundry-sdk | 1.1.1 | Apache-2.0 |
 | @anthropic-ai/sdk | 1.12.0 | Apache-2.0 |
 | @babel/runtime | 7.29.15 | MIT |
+| @bufbuild/protobuf | 2.17.0 | (Apache-2.0 AND BSD-3-Clause) |
 | @decionis/verify | 0.5.0 | Apache-2.0 |
 | @dimforge/rapier3d-compat | 0.12.0 | Apache-2.0 |
+| @emotion/is-prop-valid | 1.4.0 | MIT |
+| @emotion/memoize | 0.9.0 | MIT |
+| @fortawesome/fontawesome-common-types | 6.6.0 | MIT |
+| @fortawesome/fontawesome-svg-core | 6.6.0 | MIT |
+| @fortawesome/free-solid-svg-icons | 6.6.0 | (CC-BY-4.0 AND MIT) |
+| @fortawesome/react-fontawesome | 0.2.2 | MIT |
+| @iwer/devui | 1.1.2 | MIT |
+| @iwer/sem | 0.2.5 | MIT |
 | @mediapipe/tasks-vision | 0.10.17 | Apache-2.0 |
 | @monogrid/gainmap-js | 3.7.3 | MIT |
 | @opentelemetry/api | 1.10.0 | Apache-2.0 |
+| @pmndrs/handle | 6.6.32 | MIT (LICENSE file) |
+| @pmndrs/pointer-events | 6.6.32 | MIT (LICENSE file) |
+| @pmndrs/xr | 6.6.32 | MIT (LICENSE file) |
 | @react-three/drei | 10.7.9 | MIT |
 | @react-three/fiber | 9.8.2 | MIT |
+| @react-three/xr | 6.6.32 | MIT (LICENSE file) |
 | @stablelib/base64 | 1.0.1 | MIT |
 | @tweenjs/tween.js | 23.1.3 | MIT |
 | @types/draco3d | 1.4.10 | MIT |
@@ -45,6 +58,7 @@ These run in the host tools (bridge, agent, verifier, policy compiler) or are bu
 | @types/react | 19.3.0 | MIT |
 | @types/react-reconciler | 0.28.9 | MIT |
 | @types/stats.js | 0.17.4 | MIT |
+| @types/stylis | 4.2.7 | MIT |
 | @types/three | 0.187.0 | MIT |
 | @types/webxr | 0.5.24 | MIT |
 | @use-gesture/core | 10.3.1 | MIT |
@@ -52,15 +66,23 @@ These run in the host tools (bridge, agent, verifier, policy compiler) or are bu
 | base64-js | 1.5.1 | MIT |
 | bidi-js | 1.1.0 | MIT |
 | buffer | 6.0.3 | MIT |
+| camelize | 1.0.1 | MIT |
 | camera-controls | 3.1.2 | MIT |
+| case-anything | 2.1.13 | MIT |
 | cross-env | 7.0.3 | MIT |
 | cross-spawn | 7.0.6 | MIT |
+| css-color-keywords | 1.0.0 | ISC |
+| css-to-react-native | 3.2.0 | MIT |
+| csstype | 3.2.3 | MIT |
 | csstype | 3.2.4 | MIT |
 | detect-gpu | 5.0.70 | MIT |
+| detect-libc | 1.0.3 | Apache-2.0 |
+| dprint-node | 1.0.8 | MIT |
 | draco3d | 1.5.9 | Apache-2.0 |
 | fast-sha256 | 1.3.0 | Unlicense |
 | fflate | 0.6.11 | MIT |
 | fflate | 0.8.3 | MIT |
+| gl-matrix | 3.4.4 | MIT |
 | glsl-noise | 0.0.0 | MIT |
 | hls.js | 1.7.4 | Apache-2.0 |
 | ieee754 | 1.2.1 | BSD-3-Clause |
@@ -68,16 +90,23 @@ These run in the host tools (bridge, agent, verifier, policy compiler) or are bu
 | is-promise | 2.2.2 | MIT |
 | isexe | 2.0.0 | ISC |
 | its-fine | 2.1.1 | MIT |
+| iwer | 2.8.0 | MIT |
+| js-tokens | 4.0.0 | MIT |
 | json-schema-to-ts | 3.1.1 | MIT |
 | lie | 3.3.0 | MIT |
+| loose-envify | 1.4.0 | MIT |
 | maath | 0.10.8 | MIT |
 | meshline | 3.3.1 | MIT |
 | meshoptimizer | 1.1.1 | MIT |
+| object-assign | 4.1.1 | MIT |
 | path-key | 3.1.1 | MIT |
+| postcss-value-parser | 4.2.0 | MIT |
 | potpack | 1.0.2 | ISC |
 | promise-worker-transferable | 1.0.4 | Apache-2.0 |
+| prop-types | 15.8.1 | MIT |
 | react | 19.3.1 | MIT |
 | react-dom | 19.3.1 | MIT |
+| react-is | 16.13.1 | MIT |
 | react-use-measure | 2.1.7 | MIT |
 | require-from-string | 2.0.2 | MIT |
 | scheduler | 0.28.0 | MIT |
@@ -86,7 +115,10 @@ These run in the host tools (bridge, agent, verifier, policy compiler) or are bu
 | standardwebhooks | 1.3.0 | MIT |
 | stats-gl | 2.4.2 | MIT |
 | stats.js | 0.17.0 | MIT |
+| styled-components | 6.6.0 | MIT |
+| stylis | 4.3.6 | MIT |
 | suspend-react | 0.1.3 | MIT |
+| three | 0.165.0 | MIT |
 | three | 0.170.0 | MIT |
 | three | 0.187.0 | MIT |
 | three-mesh-bvh | 0.8.3 | MIT |
@@ -95,11 +127,15 @@ These run in the host tools (bridge, agent, verifier, policy compiler) or are bu
 | troika-three-utils | 0.52.5 | MIT |
 | troika-worker-utils | 0.52.0 | MIT |
 | ts-algebra | 2.0.0 | MIT |
+| ts-poet | 6.12.1 | Apache-2.0 |
+| ts-proto | 2.23.4 | ISC |
+| ts-proto-descriptors | 2.1.0 | ISC |
 | tunnel-rat | 0.1.2 | MIT |
 | use-sync-external-store | 1.7.0 | MIT |
 | utility-types | 3.11.0 | MIT |
 | webgl-constants | 1.1.1 | MIT (LICENSE file) |
 | webgl-sdf-generator | 1.1.1 | MIT |
+| webxr-layers-polyfill | 1.1.0 | Apache-2.0 |
 | which | 2.0.2 | ISC |
 | ws | 8.23.0 | MIT |
 | yaml | 2.9.1 | ISC |
@@ -109,6 +145,7 @@ These run in the host tools (bridge, agent, verifier, policy compiler) or are bu
 Notes:
 - **`@decionis/verify`** (Apache-2.0) is an open-source AAC verifier by the same author that **predates the hackathon**; Kervix uses it as a dependency.
 - **`@anthropic-ai/sdk`** and **`@anthropic-ai/foundry-sdk`** (Apache-2.0) are used only by the optional live agent.
+- **`@react-three/xr`** (MIT) provides the optional WebXR view of the twin. The headset emulator (`iwer`) is a separate chunk, loaded only with `?xr=emulate` on localhost for development. `@react-three/xr` also depends on `@iwer/devui` and its dependencies (including Font Awesome Free icons under CC-BY-4.0 and a second copy of three.js); the build emits them in a chunk the dashboard never loads.
 
 ## npm packages used only to build and test (53)
 

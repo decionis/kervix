@@ -583,7 +583,7 @@ Out of scope: physical attacks, a kernel compromise, a compromised build chain, 
 | `host/bridge` | Node ≥ 22.18 (TypeScript via type stripping, no build step), `ws` | Four TCP connections to the `kxgw` roles; WebSocket fan-out to dashboards; REST for the agent; scenario control. **Implemented (M3).** |
 | `host/agent` | TS, `@anthropic-ai/sdk` | Vehicle agent (see §14); scripted replay mode |
 | `host/mcp` (Could) | TS, MCP SDK | `kervix-mcp`: one MCP tool per catalog action; every call goes PROPOSE → EXECUTE |
-| `host/dashboard` | Vite + React + React Three Fiber (+ optional `@react-three/xr`) | **Procedural 3D car twin** (primitives only, no external assets), telemetry, conversation, decision feed, escalation card, histogram, ledger explorer. **Implemented (M3)**, except the ledger explorer and WebXR. |
+| `host/dashboard` | Vite + React + React Three Fiber (+ optional `@react-three/xr`) | **Procedural 3D car twin** (primitives only, no external assets), telemetry, conversation, decision feed, escalation card, histogram, ledger explorer, optional WebXR view (X6: `Enter VR` / `View in AR` only where the browser supports it; view-only; `?xr=emulate` for a headset emulator). **Implemented.** |
 | `host/verify` | TS, `@decionis/verify` | `kervix-verify` CLI (§9) |
 | `host/kxpolicy` | TS | Policy compiler, signer, test runner |
 

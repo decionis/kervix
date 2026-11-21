@@ -7,15 +7,22 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const lock = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
-// packages whose package.json has no "license" field, checked by hand (their LICENSE file)
-const MANUAL = { "webgl-constants": "MIT (LICENSE file)" };
+// packages whose package.json has no SPDX "license" (missing, or "SEE LICENSE IN ..."),
+// checked by hand against their LICENSE file
+const MANUAL = {
+  "webgl-constants": "MIT (LICENSE file)",
+  "@pmndrs/handle": "MIT (LICENSE file)",
+  "@pmndrs/pointer-events": "MIT (LICENSE file)",
+  "@pmndrs/xr": "MIT (LICENSE file)",
+  "@react-three/xr": "MIT (LICENSE file)",
+};
 
 const seen = new Map();
 for (const [p, v] of Object.entries(lock.packages)) {
   if (!p.startsWith("node_modules/") || v.link) continue;
   const name = p.replace(/^.*node_modules\//, "");
   const key = `${name}@${v.version}`;
-  if (!seen.has(key)) seen.set(key, { name, version: v.version, license: v.license ?? MANUAL[name] ?? "UNKNOWN", dev: !!v.dev });
+  if (!seen.has(key)) seen.set(key, { name, version: v.version, license: (v.license && !/^SEE LICENSE/i.test(v.license) ? v.license : MANUAL[name]) ?? "UNKNOWN", dev: !!v.dev });
 }
 const all = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
 const prod = all.filter((r) => !r.dev), dev = all.filter((r) => r.dev);
@@ -58,6 +65,7 @@ ${prod.map((r) => `| ${r.name} | ${r.version} | ${r.license} |`).join("\n")}
 Notes:
 - **\`@decionis/verify\`** (Apache-2.0) is an open-source AAC verifier by the same author that **predates the hackathon**; Kervix uses it as a dependency.
 - **\`@anthropic-ai/sdk\`** and **\`@anthropic-ai/foundry-sdk\`** (Apache-2.0) are used only by the optional live agent.
+- **\`@react-three/xr\`** (MIT) provides the optional WebXR view of the twin. The headset emulator (\`iwer\`) is a separate chunk, loaded only with \`?xr=emulate\` on localhost for development. \`@react-three/xr\` also depends on \`@iwer/devui\` and its dependencies (including Font Awesome Free icons under CC-BY-4.0 and a second copy of three.js); the build emits them in a chunk the dashboard never loads.
 
 ## npm packages used only to build and test (${dev.length})
 

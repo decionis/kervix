@@ -3,12 +3,48 @@
 // what the agent asked for: an action shows up here only after Kervix allowed
 // it, the actuator applied it, and vsimd published the new state.
 //   x = forward, y = up, z = left (right-handed)
+// WebXR (optional, X6): "Enter VR" / "View in AR" appear only on a device with
+// WebXR. The twin is built in metres, so in a headset it stands life-size on the
+// floor, 4 m in front of you, with a beacon above it for the latest decision.
+// XR is view-only: driver approvals stay on the HMI card, where they are explained.
 import { ContactShadows, OrbitControls, RoundedBox } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { IfInSessionMode, XR, XROrigin, createXRStore } from "@react-three/xr";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 import type { Tel } from "./model.ts";
+
+// ?xr=emulate (localhost only): a Meta Quest 3 emulator (IWER), for development without a headset.
+// Installed here with forceInstall: desktop Chrome exposes a navigator.xr without any device, and
+// IWER >= 2.8 will not replace it otherwise (so the library's own `emulate` option never starts).
+const EMULATE = typeof location !== "undefined" && location.hostname === "localhost" && new URLSearchParams(location.search).get("xr") === "emulate";
+const xrStore = createXRStore({ offerSession: false, emulate: false });
+if (EMULATE) {
+  void import("iwer").then(({ XRDevice, metaQuest3 }) => {
+    new XRDevice(metaQuest3).installRuntime({ forceInstall: true });
+    window.dispatchEvent(new Event("kx-xr-emulator"));
+  });
+}
+
+/** Which immersive modes this browser offers; re-checked when a device (or the emulator) appears. */
+function useXRSupport(): { vr: boolean; ar: boolean } {
+  const [s, set] = useState({ vr: false, ar: false });
+  useEffect(() => {
+    let live = true;
+    const check = () => {
+      const xr = typeof navigator !== "undefined" ? navigator.xr : undefined;
+      if (!xr) return;
+      void Promise.all([xr.isSessionSupported("immersive-vr").catch(() => false), xr.isSessionSupported("immersive-ar").catch(() => false)])
+        .then(([vr, ar]) => { if (live) set({ vr, ar }); });
+    };
+    check();
+    window.addEventListener("kx-xr-emulator", check);
+    navigator.xr?.addEventListener("devicechange", check);
+    return () => { live = false; window.removeEventListener("kx-xr-emulator", check); navigator.xr?.removeEventListener("devicechange", check); };
+  }, []);
+  return s;
+}
 
 const BODY = "#5a6f8f";
 const GLASS = "#16283a";
@@ -17,7 +53,8 @@ const STATUS_CRITICAL = "#d03b3b";
 const AMBER = "#fab219";
 const BLUE = "#3987e5";
 
-type Props = { tel: Tel | null; offline: boolean };
+type Verdict = "ALLOW" | "ESCALATE" | "BLOCK";
+type Props = { tel: Tel | null; offline: boolean; verdict?: Verdict | null; pending?: number };
 
 function hvacColor(dc: number): THREE.Color {
   // 16.0 °C cool blue -> 28.0 °C warm orange
@@ -184,16 +221,80 @@ function Vehicle({ tel }: { tel: Tel | null }) {
   );
 }
 
-export function CarTwin({ tel, offline }: Props) {
+/* XR only: what Kervix decided last, by shape AND colour (never colour alone):
+ * ALLOW = ring, ESCALATE = slowly turning diamond (waiting for the driver), BLOCK = cross.
+ * Authority offline: a cross over a red floor ring (actuation locked). */
+function DecisionBeacon({ verdict, pending, offline }: { verdict: Verdict | null; pending: number; offline: boolean }) {
+  const spin = useRef<THREE.Group>(null);
+  const shown: Verdict | null = offline ? "BLOCK" : pending > 0 ? "ESCALATE" : verdict;
+  useFrame((_, dt) => { if (spin.current) spin.current.rotation.y = shown === "ESCALATE" ? spin.current.rotation.y + dt * 0.8 : 0; });
+  if (!shown) return null;
+  const color = shown === "ALLOW" ? STATUS_GOOD : shown === "ESCALATE" ? AMBER : STATUS_CRITICAL;
   return (
-    <Canvas shadows camera={{ position: [5.2, 3.0, 5.6], fov: 38 }} style={{ filter: offline ? "grayscale(0.85) brightness(0.6)" : undefined }}>
-      <color attach="background" args={["#1a1a19"]} />
-      <hemisphereLight args={["#dfe7f2", "#1a1a19", 1.1]} />
-      <directionalLight position={[6, 9, 4]} intensity={2.4} castShadow shadow-mapSize={[1024, 1024]} />
-      <directionalLight position={[-6, 4, -5]} intensity={0.8} />
-      <Vehicle tel={tel} />
-      <ContactShadows position={[0, 0.01, 0]} opacity={0.5} scale={12} blur={2.4} far={3} />
-      <OrbitControls enablePan={false} minDistance={5} maxDistance={14} maxPolarAngle={Math.PI / 2.1} target={[0, 0.7, 0]} />
-    </Canvas>
+    <group position={[0, 2.35, 0]}>
+      <group ref={spin}>
+        {shown === "ALLOW" && (
+          <mesh>
+            <torusGeometry args={[0.22, 0.05, 12, 48]} />
+            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} />
+          </mesh>
+        )}
+        {shown === "ESCALATE" && (
+          <mesh>
+            <octahedronGeometry args={[0.24]} />
+            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} />
+          </mesh>
+        )}
+        {shown === "BLOCK" && [Math.PI / 4, -Math.PI / 4].map((r) => (
+          <mesh key={r} rotation={[0, 0, r]}>
+            <boxGeometry args={[0.56, 0.1, 0.1]} />
+            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} />
+          </mesh>
+        ))}
+      </group>
+      {offline && (
+        <mesh position={[0, -2.32, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[3.2, 3.35, 64]} />
+          <meshBasicMaterial color={STATUS_CRITICAL} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+export function CarTwin({ tel, offline, verdict = null, pending = 0 }: Props) {
+  const { vr, ar } = useXRSupport();
+  return (
+    <>
+      <Canvas shadows camera={{ position: [5.2, 3.0, 5.6], fov: 38 }} style={{ filter: offline ? "grayscale(0.85) brightness(0.6)" : undefined }}>
+        <XR store={xrStore}>
+          <IfInSessionMode deny="immersive-ar">
+            <color attach="background" args={["#1a1a19"]} />
+          </IfInSessionMode>
+          <hemisphereLight args={["#dfe7f2", "#1a1a19", 1.1]} />
+          <directionalLight position={[6, 9, 4]} intensity={2.4} castShadow shadow-mapSize={[1024, 1024]} />
+          <directionalLight position={[-6, 4, -5]} intensity={0.8} />
+          <Vehicle tel={tel} />
+          <ContactShadows position={[0, 0.01, 0]} opacity={0.5} scale={12} blur={2.4} far={3} />
+          <IfInSessionMode deny={["immersive-vr", "immersive-ar"]}>
+            <OrbitControls enablePan={false} minDistance={5} maxDistance={14} maxPolarAngle={Math.PI / 2.1} target={[0, 0.7, 0]} />
+          </IfInSessionMode>
+          <IfInSessionMode>
+            {/* you stand 4.2 m to the car's left, facing it */}
+            <XROrigin position={[0, 0, 4.2]} />
+            <DecisionBeacon verdict={verdict} pending={pending} offline={offline} />
+          </IfInSessionMode>
+          <IfInSessionMode allow="immersive-vr">
+            <gridHelper args={[20, 20, "#3a3a38", "#2a2a28"]} position={[0, 0.002, 0]} />
+          </IfInSessionMode>
+        </XR>
+      </Canvas>
+      {(vr || ar) && (
+        <div className="xrbar">
+          {vr && <button onClick={() => void xrStore.enterVR()} title="See the twin life-size in a headset (view only)">Enter VR</button>}
+          {ar && <button onClick={() => void xrStore.enterAR()} title="Place the twin life-size in your room (view only)">View in AR</button>}
+        </div>
+      )}
+    </>
   );
 }
