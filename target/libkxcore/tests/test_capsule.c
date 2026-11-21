@@ -156,10 +156,17 @@ static void build_stream(void) {
     push(decision(&bad, &p, 1), KX_REL_FOLLOWS, 17, -1);                              /* 18 BLOCK K4 (recorded as received) */
     memset(&e, 0, sizeof e); e.event = KX_EV_EPOCH; e.reason = KX_R_AUTHORITY_EPOCH; e.quarantined_bytes = 117; e.restart = 2; memcpy(e.restart_cause, "SIGKILL", 8);
     push(e, KX_REL_EPOCH_OPENS, 18, -1);                                              /* 19 restart epoch */
+    /* escalation ids restart at 1 per epoch: #7 again, legitimately, after the restart */
+    kx_intent_t loc3 = intent(KX_ACT_TELEMATICS_LOCATION_SHARE, 8); addp(&loc3, KX_P_RECIPIENT, KX_RECIPIENT_EMERGENCY_CONTACT); addp(&loc3, KX_P_DURATION_S, 900);
+    push(decision(&loc3, &p, 1), KX_REL_FOLLOWS, 19, -1);                            /* 20 ESCALATE #7 (new epoch) */
+    S[20].rec.escalation_id = 7;
+    e = S[20].rec; e.event = KX_EV_ESC_RESOLVED; e.verdict = KX_VERDICT_BLOCK; e.reason = KX_R_HUMAN_DENIED;
+    e.human = 1; strcpy(e.approver, "hmi:driver-seat");
+    push(e, KX_REL_FOLLOWS, 20, -1);                                                  /* 21 denied */
     memset(&e, 0, sizeof e); e.event = KX_EV_POLICY; e.reason = KX_R_POLICY_ACTIVATED; e.human = 1;
     memcpy(e.prev_policy_hash, POL.hash, 32); memset(e.policy_hash, 0xb2, 32);
     strcpy(e.approver, "author:policy-team approver:safety-board");
-    push(e, KX_REL_FOLLOWS, 19, -1);                                                  /* 20 signed policy activated */
+    push(e, KX_REL_FOLLOWS, 21, -1);                                                  /* 22 signed policy activated */
 }
 
 static kx_capsule_ctx_t ctx(void) {
@@ -189,6 +196,9 @@ static int emit(int lie) {
     if (lie == 2) {           /* the recorded intent hash does not belong to the recorded intent */
         S[1].rec.intent_hash[0] ^= 0xff;
         S[2].rec.intent_hash[0] ^= 0xff;
+    }
+    if (lie == 3) {           /* escalation #9 resolved a second time in the same epoch */
+        S[16].rec.escalation_id = 9;
     }
     if (lie == 1) {
         S[3].rec.verdict = KX_VERDICT_ALLOW;
@@ -280,10 +290,10 @@ static void test_capsules(void) {
     KX_CHECK(strstr(JSON[12], "\"verdict_class\":\"denied\"") && strstr(JSON[14], "\"verdict_class\":\"expired\""));
     KX_CHECK(strstr(JSON[0], "\"ledger_mode\":\"standalone\"") && strstr(JSON[0], "\"chain\"") == NULL);
     /* policy activation: fyi, approved by humans (author + approver), authority = the NEW policy */
-    KX_CHECK(strstr(JSON[20], "\"action_id\":\"policy:b2b2b2b2b2b2b2b2\"") && strstr(JSON[20], "\"action_type\":\"fyi\""));
-    KX_CHECK(strstr(JSON[20], "\"approver\":\"human\"") && strstr(JSON[20], "\"verdict_class\":\"resolved\"") && strstr(JSON[20], "\"human_disposed\":true"));
-    KX_CHECK(strstr(JSON[20], "\"authority\":\"sha256:b2b2") && strstr(JSON[20], "\"previous_policy_hash\":\"sha256:8539d711"));
-    KX_CHECK(strstr(JSON[20], "\"event\":\"policy_activated\"") && strstr(JSON[20], "\"reason\":\"POLICY_ACTIVATED\""));
+    KX_CHECK(strstr(JSON[22], "\"action_id\":\"policy:b2b2b2b2b2b2b2b2\"") && strstr(JSON[22], "\"action_type\":\"fyi\""));
+    KX_CHECK(strstr(JSON[22], "\"approver\":\"human\"") && strstr(JSON[22], "\"verdict_class\":\"resolved\"") && strstr(JSON[22], "\"human_disposed\":true"));
+    KX_CHECK(strstr(JSON[22], "\"authority\":\"sha256:b2b2") && strstr(JSON[22], "\"previous_policy_hash\":\"sha256:8539d711"));
+    KX_CHECK(strstr(JSON[22], "\"event\":\"policy_activated\"") && strstr(JSON[22], "\"reason\":\"POLICY_ACTIVATED\""));
 
     /* REPLAY: every recorded decision reproduces bit-for-bit from its evidence */
     int decisions = 0;
@@ -294,7 +304,7 @@ static void test_capsules(void) {
         kx_capsule_replay(&POL, &S[i].rec, &r);
         KX_CHECK(r.verdict == S[i].rec.verdict && r.reason == S[i].rec.reason && r.rule_index == S[i].rec.rule_index);
     }
-    KX_CHECK(decisions == 9);   /* steps 1,3,4,6,7,11,13,15,18 */
+    KX_CHECK(decisions == 10);  /* steps 1,3,4,6,7,11,13,15,18,20 */
 
     /* invalid records never produce a capsule */
     char out[KX_CAPSULE_JCS_MAX];
@@ -310,7 +320,8 @@ static void test_capsules(void) {
 int main(int argc, char **argv) {
     if (kx_policy_build_default(&POL) != 0) return 1;
     if (argc > 1 && strcmp(argv[1], "--emit") == 0)
-        return emit(argc > 2 && strcmp(argv[2], "--lie") == 0 ? 1 : argc > 2 && strcmp(argv[2], "--lie-hash") == 0 ? 2 : 0);
+        return emit(argc > 2 && strcmp(argv[2], "--lie") == 0 ? 1 : argc > 2 && strcmp(argv[2], "--lie-hash") == 0 ? 2
+                    : argc > 2 && strcmp(argv[2], "--lie-twice") == 0 ? 3 : 0);
     test_cose_and_b64();
     test_capsules();
     KX_TEST_DONE();
