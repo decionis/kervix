@@ -164,16 +164,56 @@ export async function verifyDossier({ files, wasm } = {}) {
     const k = c.evidence?.kervix;
     if (k?.event === "policy_activated" && !bodies.has(k.policy_hash)) fail("policy", `capsule #${i + 1}`, `activated policy ${k.policy_hash.slice(0, 15)}… is not in the dossier`);
   }
-  const replay = { match: 0, mismatch: 0, unknown_policy: 0, skipped: 0, k3: 0, policies: new Set() };
+  const replay = { match: 0, mismatch: 0, unknown_policy: 0, skipped: 0, k3: 0, capacity: 0, policies: new Set() };
+  const pureVerdict = new Map();   // capsule index -> what the policy alone decided
   for (const [i, c] of known.entries()) {
     if (c.evidence?.kervix?.event !== "decision") continue;
     const r = engine.replay(c);
     replay[r.status]++;
-    if (r.status === "match") replay.policies.add(c.evidence.kervix.policy_hash);
+    if (r.status === "match") { replay.policies.add(c.evidence.kervix.policy_hash); pureVerdict.set(i, r.pure); }
     if (r.detail.includes("K3")) replay.k3++;
+    if (r.detail.startsWith("capacity")) replay.capacity++;
     if (r.status === "mismatch") fail("replay", `capsule #${i + 1}`, `decision does not follow from the policy: ${r.detail}`);
     if (r.status === "unknown_policy") fail("replay", `capsule #${i + 1}`, `decided under a policy that cannot be checked: ${r.detail}`);
   }
+
+  // 8 rate limits (F12) -------------------------------------------------------------
+  // Each epoch capsule names the principals (secpol types) its limiter covers. Every decision
+  // the limiter had to see records the bucket it was made on; the vehicle's own GCRA (WASM)
+  // re-decides it, and consecutive decisions on one bucket must chain.
+  const rate = { checked: 0, limited: 0, epochs_without: 0, gaps: 0 };
+  const rateCfg = new Map();      // epoch_id -> { all, types } | null (epoch predates F12)
+  const bucket = new Map();       // epoch|type|action -> tat after the last recorded decision
+  for (const [i, c] of known.entries()) {
+    const k = c.evidence?.kervix, where = `capsule #${i + 1}`;
+    if (k?.event === "epoch") {
+      const cfg = k.rate && Number.isInteger(k.rate.all_types) && Array.isArray(k.rate.types) ? { all: k.rate.all_types === 1, types: new Set(k.rate.types) } : null;
+      if (!cfg) rate.epochs_without++;
+      rateCfg.set(c.epoch_id, cfg);
+      continue;
+    }
+    if (k?.event !== "decision" || !pureVerdict.has(i)) continue;   // replay failures are already findings
+    const recorded = !!k.rate || k.gate === "rate_limit";
+    if (!rateCfg.has(c.epoch_id)) { if (recorded) info.set("rate-limit decisions from an epoch whose start is not in the dossier (not checked)", (info.get("rate-limit decisions from an epoch whose start is not in the dossier (not checked)") ?? 0) + 1); continue; }
+    const cfg = rateCfg.get(c.epoch_id), lim = engine.rateOf(k.intent?.action), pure = pureVerdict.get(i);
+    const due = !!cfg && !!lim && (cfg.all || cfg.types.has(k.client_type)) && (pure === "ALLOW" || pure === "ESCALATE") && k.gate !== "k3_ledger";
+    if (!due) { if (recorded) fail("rate", where, "records a rate-limit check the limiter could not have made"); continue; }
+    if (!k.rate) { fail("rate", where, `the rate limiter was skipped (principal type ${k.client_type}, ${k.intent.action})`); continue; }
+    if (k.rate.burst !== lim.burst || k.rate.per_min !== lim.per_min) { fail("rate", where, `limit ${k.rate.burst} + ${k.rate.per_min}/min differs from the catalog's ${lim.burst} + ${lim.per_min}/min`); continue; }
+    rate.checked++;
+    if (k.rate.overflow === 1) { if (k.gate === "rate_limit") rate.limited++; else fail("rate", where, "no bucket was left for the principal, yet it was not limited"); continue; }
+    if (!Number.isSafeInteger(k.rate.tat_ns) || k.rate.tat_ns < 0 || !Number.isSafeInteger(k.env?.now_mono_ns)) { fail("rate", where, "malformed rate evidence"); continue; }
+    const key = `${c.epoch_id}|${k.client_type}|${k.intent.action}`, tat = BigInt(k.rate.tat_ns), last = bucket.get(key) ?? 0n;
+    if (tat < last) fail("rate", where, "bucket state rolled back: a charge from an earlier decision is missing");
+    else if (tat > last) rate.gaps++;
+    const step = engine.rateStep(lim.burst, lim.per_min, tat, BigInt(k.env.now_mono_ns));
+    if (step.conforms && k.gate === "rate_limit") fail("rate", where, "BLOCKed as RATE_LIMITED although within its rate limit");
+    if (!step.conforms && k.gate !== "rate_limit")
+      fail("rate", where, `exceeded its rate limit (${lim.burst} back to back, then ${lim.per_min}/min) but was ${k.verdict === "BLOCK" ? "blocked for another reason" : `not limited (${k.verdict})`}`);
+    if (k.gate === "rate_limit") rate.limited++;
+    bucket.set(key, step.after);
+  }
+  if (rate.gaps) info.set("rate-limit charges with no recorded decision between them (decisions lost while the ledger was unhealthy?)", rate.gaps);
 
   const ok = findings.length === 0;
   const summary = {
@@ -186,6 +226,7 @@ export async function verifyDossier({ files, wasm } = {}) {
     vehicle_key: key.kid,
     head: prev?.capsule_id ?? null,
     replay: { ...replay, policies: [...replay.policies] },
+    rate,
     executed: executed.size,
     policies,
     findings,
@@ -193,6 +234,6 @@ export async function verifyDossier({ files, wasm } = {}) {
   };
 
   // raw values for the CLI's report (not part of the JSON summary)
-  Object.defineProperty(summary, "_ui", { enumerable: false, value: { findings, policies, replay, recoveries, epochs, manifest, key, info, byEvent, known } });
+  Object.defineProperty(summary, "_ui", { enumerable: false, value: { findings, policies, replay, rate, recoveries, epochs, manifest, key, info, byEvent, known } });
   return summary;
 }

@@ -9,7 +9,7 @@
 |---|---|---|
 | Public GitHub repository | ✅ | `decionis/kervix` is public (Nov 21). See "Going public" below for the key rotation. |
 | Open-source licence visible in the repo's About section | ✅ | `LICENSE` is the canonical Apache-2.0 text; GitHub detects it as `Apache-2.0`. |
-| Really builds for / runs on QNX 8.0 | ✅ | CMake toolchains (`cmake/qnx-*.cmake`), secpol policies (`target/secpol/`), image snippets, on-target suites (`tests/target/`), and QNX run results in `docs/evidence/` (selftest 29/29 dev + secure, bench, signed dossiers). |
+| Really builds for / runs on QNX 8.0 | ✅ | CMake toolchains (`cmake/qnx-*.cmake`), secpol policies (`target/secpol/`), image snippets, on-target suites (`tests/target/`), and QNX run results in `docs/evidence/` (selftest 31/31 dev + secure, bench, signed dossiers). |
 | Build/run instructions: QNX version, target, toolchain | ✅ | README § Build and run: SDP 8.0, QEMU x86_64 (RPi4 aarch64le cross-built), qcc/gcc 12 + CMake, macOS/Docker and native Linux paths (`docs/setup-macos.md`). 🟡 Add the RPi4 steps after Dec 3. |
 | Category | ✅ | Automotive & Mobility (select it in the Devpost form). |
 | Text description | ✅ | [`devpost.md`](devpost.md), paste-ready. Refresh the numbers after the RPi4 run. |

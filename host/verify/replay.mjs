@@ -32,7 +32,7 @@ export async function loadReplay(wasmPath = join(here, "kxcore.wasm"), bodies = 
   const actions = new Map(catalog.actions.map((a) => [a.name, a]));
   const fields = catalog.telemetry.map((f) => f.name);
   const verdicts = ["NONE", "ALLOW", "ESCALATE", "BLOCK"];
-  const gates = ["none", "k4_validation", "expiry", "k1_stale", "k2_implausible", "k3_ledger", "require"];
+  const gates = ["none", "k4_validation", "expiry", "k1_stale", "k2_implausible", "k3_ledger", "require", "rate_limit"];
   const reasonName = new Map(catalog.reasons.map((r) => [r.id, r.name]));
 
   /** Replay one decision capsule. Returns { status: "match"|"mismatch"|"skipped", detail } */
@@ -59,23 +59,29 @@ export async function loadReplay(wasmPath = join(here, "kxcore.wasm"), bodies = 
     const r = x.kxw_eval();
     const got = { verdict: verdicts[r & 0xff], gate: gates[(r >> 8) & 0xff], reason: reasonName.get(r >>> 16), rule_id: cstr(x.kxw_rule_id()) };
     const want = { verdict: k.verdict, gate: k.gate, reason: k.reason, rule_id: k.rule_id ?? "" };
-    // K3 (ledger back-pressure) is applied after kx_eval when the ledger queue lacks room; it is
-    // recorded in the evidence and replays as the gate that decided.
-    const diffs = Object.keys(want).filter((f) => got[f] !== want[f] && !(f === "rule_id" && want.gate === "k3_ledger"));
-    if (want.gate === "k3_ledger" && got.verdict !== "BLOCK") {
-      // back-pressure override: the pure policy said ALLOW/ESCALATE; recorded BLOCK must be LEDGER_PRESSURE
-      if (want.reason === "LEDGER_PRESSURE" && want.verdict === "BLOCK") return { status: "match", detail: "ledger back-pressure override (K3)" };
-    }
-    if (diffs.length) return { status: "mismatch", detail: diffs.map((f) => `${f}: recorded ${want[f]}, replay ${got[f]}`).join("; ") };
+    // kervixd may turn the policy's ALLOW/ESCALATE into a BLOCK after kx_eval, never the other way:
+    //  - K3 ledger back-pressure (no room to record it: "no audit, no action");
+    //  - F12 rate limit (checked against the recorded bucket by the rate pass in verify-lib);
+    //  - capacity: grant table full, escalation queue full, no CSPRNG for a grant id.
+    // Each is recorded in the evidence and replays as the override that decided.
+    const pure = got.verdict;
+    const override = want.verdict === "BLOCK" && (pure === "ALLOW" || pure === "ESCALATE");
+    if (override && want.gate === "k3_ledger" && want.reason === "LEDGER_PRESSURE") return { status: "match", detail: "ledger back-pressure override (K3)", pure };
+    if (override && want.gate === "rate_limit" && want.reason === "RATE_LIMITED") return { status: "match", detail: "rate limit (F12)", pure };
+    if (override && want.gate === got.gate && want.rule_id === got.rule_id &&
+        ((pure === "ALLOW" && (want.reason === "GRANT_TABLE_FULL" || want.reason === "LEDGER_PRESSURE")) || (pure === "ESCALATE" && want.reason === "ESCALATION_QUEUE_FULL")))
+      return { status: "match", detail: `capacity override (${want.reason})`, pure };
+    const diffs = Object.keys(want).filter((f) => got[f] !== want[f]);
+    if (diffs.length) return { status: "mismatch", detail: diffs.map((f) => `${f}: recorded ${want[f]}, replay ${got[f]}`).join("; "), pure };
     // the intent hash the grant was bound to must be reproducible from the evidence
     if (it.tenant_id && k.intent_hash) {
       setStr(`${it.tenant_id}\n${capsule.operator}\nai_agent`);
       if (x.kxw_intent_hash(BigInt(it.captured_at_ms)) === 0) {
         const h = "sha256:" + hex(x.kxw_hash(), 32);
-        if (h !== k.intent_hash) return { status: "mismatch", detail: "intent_hash does not recompute from the recorded intent" };
+        if (h !== k.intent_hash) return { status: "mismatch", detail: "intent_hash does not recompute from the recorded intent", pure };
       }
     }
-    return { status: "match", detail: "" };
+    return { status: "match", detail: "", pure };
   }
   /** Load a policy body with the vehicle's loader; returns its hash or null if rejected. */
   function hashBody(body) {
@@ -87,5 +93,12 @@ export async function loadReplay(wasmPath = join(here, "kxcore.wasm"), bodies = 
     loaded = policyHash;
     return h;
   }
-  return { replay, policyHash, hashBody, catalogSha: cstr(x.kxw_catalog_sha()) };
+  /** F12: the catalog's rate limit for an action, or null. */
+  const rateOf = (name) => actions.get(name)?.rate ?? null;
+  /** F12: one step of the vehicle's GCRA (kx_rl_step). tat, now: BigInt ns. */
+  function rateStep(burst, perMin, tat, now) {
+    const r = x.kxw_rl_step(burst, perMin, tat, now);
+    return { conforms: r === 1, valid: r >= 0, after: r === 1 ? BigInt.asUintN(64, x.kxw_rl_after()) : tat };
+  }
+  return { replay, policyHash, hashBody, rateOf, rateStep, catalogSha: cstr(x.kxw_catalog_sha()) };
 }

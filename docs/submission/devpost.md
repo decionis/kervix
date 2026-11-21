@@ -34,6 +34,7 @@ Underneath that:
 
 - **The kernel enforces the topology.** Each trust level is its own resource-manager channel with its own **secpol type**: agent, driver HMI, actuator, observer and workshop. The QNX kernel refuses every connection the policy does not list, **even for root**. The agent cannot touch the actuator, approve its own request, rewrite vehicle state or impersonate the authority. Our red-team tool `kx-rogue` tries ten such attacks; as the deployed agent, **0 of 10 get through**, and every one is refused by the kernel.
 - **Every decision is evidence.** Each decision, approval, actuation, refusal, restart and policy change becomes an **Ed25519-signed, hash-chained Agent Action Capsule** (AAC draft-04, COSE_Sign1), written off the hot path. With "no audit, no action", nothing is allowed if it can't be recorded.
+- **Rate limits the agent can't talk its way around.** Each action has a token bucket per *kernel-stamped* caller type (not the name the agent gives itself), so an agent can't hammer the windows or bury the driver in approval requests. Each limited decision records its bucket, and the verifier re-runs the limiter.
 - **Replay proves the decision followed the policy.** `kervix-verify` checks a ledger offline: signatures, chain, semantics. It then **re-runs every decision with the vehicle's own C policy core compiled to WebAssembly**. A signature proves *who* recorded a decision; replay proves the decision *follows from the policy*. A test dossier containing a perfectly signed lie (an OTA flash at 110 km/h recorded as ALLOW) passes every other check and is caught only by replay.
 - **Policies are signed updates.** A policy is YAML, compiled into a canonical body that the vehicle's C code loads, signed by an author **and a different approver**, and activated over a channel only the workshop type can reach. Each decision is replayed under the exact policy it was made with.
 - **The dashboard** shows a procedural 3D twin that renders *what the vehicle reports*, never what was asked. Next to it: the driver's approval card, a live decision feed with the agent's reasoning summaries, a latency histogram, and a **ledger explorer with a Verify button**. Edit one record by a few milliseconds and verification fails at exactly that record.
@@ -53,7 +54,7 @@ Underneath that:
 - **Telemetry:** a 100 Hz simulator publishes through a single-writer **seqlock in shared memory**, mapped read-only by everyone else (TSan-clean).
 - **qcrypto:** Ed25519 signing of every capsule, verification of policy signatures, and a DRBG for grant ids and per-boot keys.
 - **`kx-supervisor`:** restarts the authority as the only type allowed to start it, records the cause in the next signed epoch, and gives up after a crash loop, failing closed.
-- **On-target tools:** `kx-selftest` checks every claim on the target as the real roles (**29/29 on both the dev and the secure image**). `kx-bench` measures latency and isolation. `kx-rogue` is the red team.
+- **On-target tools:** `kx-selftest` checks every claim on the target as the real roles (**31/31 on both the dev and the secure image**). `kx-bench` measures latency and isolation. `kx-rogue` is the red team.
 - **Portability:** a portable core (`libkxcore`: policy evaluation, canonical JSON, intents, grants, capsules) runs unchanged on QNX, in host tests (ASan/UBSan) and as **WebAssembly** in the verifier.
 
 **On the host (TypeScript, ~4,600 lines):** network gateways to the QNX side, a bridge (WebSocket and REST), the agent, the React Three Fiber dashboard, the policy compiler and signer, and the verifier.
@@ -74,13 +75,14 @@ Underneath that:
   - Verifying the live session found that escalation ids restart per epoch and the verifier didn't know.
   - A byte-corruption test found that two different signed policy files could mean the same policy.
   - The verifier used to *skip* decisions made under a policy it didn't have; now it fails them.
+  - Writing the rate limiter showed the verifier treated kervixd's fail-closed capacity refusals (grant table full, approval queue full) as replay mismatches.
 
   Each is fixed and covered by a test.
 
 ## Accomplishments I'm proud of
 
 - **The kernel does the hard part.** Even as root, the agent's type cannot reach the actuator, and the release image confines the root shell itself.
-- **Everything is checked on QNX, not just compiled:** 12 on-target test suites plus the codelab, the 29-check selftest on the secure release image, and a live Claude session whose signed ledger verifies offline (21/21 decisions replayed).
+- **Everything is checked on QNX, not just compiled:** 12 on-target test suites plus the codelab, the 31-check selftest on the secure release image, and a live Claude session whose signed ledger verifies offline (21/21 decisions replayed).
 - **Replay catches a signed lie.** That is the difference between an audit log and evidence.
 - **The YAML policy and the vehicle's built-in C policy hash identically.** The policy you review is the one that runs.
 - **A live moment worth keeping:** in the live run, Claude spotted the poisoned bulletin's hidden instruction and declined on its own. In the scripted run, an agent that *is* fooled gets a BLOCK from Kervix. Either way, nothing unsafe happens.
@@ -118,7 +120,7 @@ I registered the AAC `follows` chain relation and the `vehicle.*` effect-type na
 ## Try it (for judges)
 
 - **Without QNX** (any machine with Node ≥ 22.18): `npm ci && make test`, then `node host/verify/kervix-verify.mjs tests/fixtures/dossier-qnx-qemu-2026-11-20`. This verifies a ledger signed on QNX, offline.
-- **With QNX SDP 8.0:** `make target-selftest` boots QNX in QEMU, runs all 29 checks and verifies the run's ledger. `make codelab` runs the tutorial. See the [README](../../README.md#build-and-run).
+- **With QNX SDP 8.0:** `make target-selftest` boots QNX in QEMU, runs all 31 checks and verifies the run's ledger. `make codelab` runs the tutorial. See the [README](../../README.md#build-and-run).
 - **Evidence:** [selftest tables](../evidence/), [benchmark](../evidence/bench-qnx-qemu.txt), [live Claude transcript and its signed ledger](../evidence/live-claude-2026-11-21.md), [screenshots](../images/).
 
 ## Disclosures

@@ -30,6 +30,10 @@ typedef struct {
     uint8_t     policy_hash[32];
     uint32_t    restart;        /* kx-supervisor restart count (0 = first start); recorded in the epoch capsule */
     char        restart_cause[16];
+    /* F12: the principals this epoch rate-limits (recorded in the epoch capsule) */
+    uint8_t     rate_all_types;
+    uint8_t     n_rate_types;
+    uint32_t    rate_types[KX_RL_MAX_TYPES];
 } kxl_config_t;
 
 /* Load or create the vehicle key, recover the ledger, queue the epoch capsule

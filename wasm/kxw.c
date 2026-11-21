@@ -9,6 +9,7 @@
 
 #include "kervix/intent.h"
 #include "kervix/policy.h"
+#include "kervix/ratelimit.h"
 
 #define EXPORT(name) __attribute__((export_name(name)))
 
@@ -83,3 +84,11 @@ EXPORT("kxw_intent_hash") int kxw_intent_hash(int64_t captured_at_ms) {
     kx_intent_ctx_t ctx = { t, v, a, captured_at_ms };
     return kx_intent_hash(&IN, &ctx, HASH);
 }
+/* F12: one GCRA step of the vehicle's rate limiter (kervix/ratelimit.h).
+ * Returns 1 conforms / 0 limited / -1 invalid; the new bucket state via kxw_rl_after(). */
+static uint64_t RL_AFTER;
+EXPORT("kxw_rl_step") int32_t kxw_rl_step(uint32_t burst, uint32_t per_min, int64_t tat, int64_t now) {
+    if (burst > 0xffff || per_min > 0xffff || tat < 0 || now < 0) return -1;
+    return kx_rl_step((uint16_t)burst, (uint16_t)per_min, (uint64_t)tat, (uint64_t)now, &RL_AFTER);
+}
+EXPORT("kxw_rl_after") int64_t kxw_rl_after(void) { return (int64_t)RL_AFTER; }

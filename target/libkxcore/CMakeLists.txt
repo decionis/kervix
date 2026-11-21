@@ -11,6 +11,7 @@ add_library(kxcore STATIC
   src/jcs.c
   src/intent.c
   src/grant.c
+  src/ratelimit.c
   src/cose.c
   src/capsule.c
   src/ledger.c

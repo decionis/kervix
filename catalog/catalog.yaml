@@ -50,12 +50,18 @@ telemetry:
 # safety: qm = comfort/convenience; safety = may affect vehicle motion or
 # integrity. Constitution K1 blocks every action that is not
 # (two_way AND qm) when telemetry is stale.
+# rate (F12): a token bucket per (proposer's secpol type, action), applied by
+# kervixd to the rate-limited principals (default: the agent gateway type) when
+# the policy would ALLOW or ESCALATE. burst = proposals accepted back to back,
+# per_min = sustained refill. Part of the vehicle's constitution: a signed
+# policy cannot loosen it. Omit `rate` for no limit.
 actions:
   - id: 1
     name: cabin.climate.set
     summary: Set the driver-zone cabin temperature.
     irreversibility: two_way
     safety: qm
+    rate: { burst: 10, per_min: 30 }
     params:
       temp_dc: { type: int, min: 160, max: 280, doc: "Target temperature in 0.1 °C (160 = 16.0 °C)" }
 
@@ -64,6 +70,7 @@ actions:
     summary: Move one window to a position.
     irreversibility: two_way
     safety: qm
+    rate: { burst: 8, per_min: 30 }
     params:
       window:  { type: enum, enum: window }
       pos_pct: { type: int, min: 0, max: 100, doc: "0 = closed, 100 = fully open" }
@@ -73,6 +80,7 @@ actions:
     summary: Unlock one door.
     irreversibility: two_way
     safety: safety
+    rate: { burst: 6, per_min: 12 }
     params:
       door: { type: enum, enum: door }
 
@@ -81,6 +89,7 @@ actions:
     summary: Turn the hazard lights on or off.
     irreversibility: two_way
     safety: qm
+    rate: { burst: 6, per_min: 20 }
     params:
       on: { type: bool }
 
@@ -89,6 +98,7 @@ actions:
     summary: Change the adaptive-cruise-control set speed.
     irreversibility: two_way
     safety: safety
+    rate: { burst: 8, per_min: 30 }
     params:
       target_kph: { type: int, min: 30, max: 200 }
 
@@ -97,6 +107,7 @@ actions:
     summary: Set the maximum state-of-charge for charging.
     irreversibility: two_way
     safety: qm
+    rate: { burst: 4, per_min: 6 }
     params:
       pct: { type: int, min: 50, max: 100 }
 
@@ -105,6 +116,7 @@ actions:
     summary: Share live vehicle location with a recipient for a duration.
     irreversibility: one_way_recoverable
     safety: qm
+    rate: { burst: 3, per_min: 6 }
     privacy: true
     params:
       recipient:  { type: enum, enum: recipient }
@@ -115,6 +127,7 @@ actions:
     summary: Clear stored diagnostic trouble codes on an ECU.
     irreversibility: one_way_recoverable
     safety: safety
+    rate: { burst: 3, per_min: 6 }
     params:
       ecu: { type: enum, enum: ecu }
 
@@ -123,6 +136,7 @@ actions:
     summary: Engage the immobilizer (vehicle cannot be driven).
     irreversibility: one_way_recoverable
     safety: safety
+    rate: { burst: 3, per_min: 6 }
     params: {}
 
   - id: 10
@@ -130,6 +144,7 @@ actions:
     summary: Write a brake-system calibration blob.
     irreversibility: one_way_consequential
     safety: safety
+    rate: { burst: 3, per_min: 6 }
     params:
       ecu:         { type: enum, enum: ecu }
       blob_digest: { type: digest, doc: "sha256 of the calibration blob" }
@@ -139,6 +154,7 @@ actions:
     summary: Flash a firmware image to an ECU (vehicle unusable during flash).
     irreversibility: one_way_consequential
     safety: safety
+    rate: { burst: 4, per_min: 6 }
     params:
       ecu:          { type: enum, enum: ecu }
       image_digest: { type: digest, doc: "sha256 of the firmware image" }

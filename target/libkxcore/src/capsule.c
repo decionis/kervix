@@ -8,7 +8,7 @@
 #include "kervix/jcs.h"
 #include "kervix/sha256.h"
 
-static const char *const GATE_NAMES[] = { "none", "k4_validation", "expiry", "k1_stale", "k2_implausible", "k3_ledger", "require" };
+static const char *const GATE_NAMES[] = { "none", "k4_validation", "expiry", "k1_stale", "k2_implausible", "k3_ledger", "require", "rate_limit" };
 static const char *const EVENT_NAMES[] = { "", "epoch", "decision", "effect", "escalation_resolved", "grant_refused", "grant_expired", "policy_activated" };
 static const char *const VERDICTS[] = { "NONE", "ALLOW", "ESCALATE", "BLOCK" };
 
@@ -105,7 +105,7 @@ static int write_evidence(const kx_capsule_rec_t *r, const char *tenant_id, char
     if (r->escalation_id) { kx_jw_key(&w, "escalation_id"); kx_jw_int(&w, r->escalation_id); }
     if (r->event == KX_EV_DECISION) { kx_jw_key(&w, "eval_ns"); kx_jw_int(&w, r->eval_ns); }
     kx_jw_key(&w, "event"); kx_jw_str(&w, EVENT_NAMES[r->event]);
-    if (r->event == KX_EV_DECISION) { kx_jw_key(&w, "gate"); kx_jw_str(&w, GATE_NAMES[r->gate <= KX_GATE_REQUIRE ? r->gate : 0]); }
+    if (r->event == KX_EV_DECISION) { kx_jw_key(&w, "gate"); kx_jw_str(&w, GATE_NAMES[r->gate <= KX_GATE__MAX ? r->gate : 0]); }
     if (r->has_grant) { hex(r->grant_id, 16, gid); kx_jw_key(&w, "grant_id"); kx_jw_str(&w, gid); }
     if (r->has_intent) {
         kx_jw_key(&w, "intent");
@@ -118,6 +118,22 @@ static int write_evidence(const kx_capsule_rec_t *r, const char *tenant_id, char
     kx_jw_key(&w, "policy_hash"); kx_jw_str(&w, h);
     if (r->event == KX_EV_POLICY) { sha_hex_prefixed(r->prev_policy_hash, h); kx_jw_key(&w, "previous_policy_hash"); kx_jw_str(&w, h); }
     if (r->event == KX_EV_EPOCH) { kx_jw_key(&w, "quarantined_bytes"); kx_jw_int(&w, (int64_t)r->quarantined_bytes); }
+    if (r->event == KX_EV_EPOCH && r->has_rate_config) {   /* F12: the principals this epoch rate-limits */
+        kx_jw_key(&w, "rate"); kx_jw_obj_begin(&w);
+        kx_jw_key(&w, "all_types"); kx_jw_int(&w, r->rate_all_types);
+        kx_jw_key(&w, "types"); kx_jw_arr_begin(&w);
+        for (uint8_t i = 0; i < r->n_rate_types && i < KX_RL_MAX_TYPES; i++) kx_jw_int(&w, r->rate_types[i]);
+        kx_jw_arr_end(&w);
+        kx_jw_obj_end(&w);
+    }
+    if (r->event == KX_EV_DECISION && r->has_rate) {        /* F12: the bucket this decision was made on */
+        kx_jw_key(&w, "rate"); kx_jw_obj_begin(&w);
+        kx_jw_key(&w, "burst"); kx_jw_int(&w, r->rate_burst);
+        if (r->rate_overflow) { kx_jw_key(&w, "overflow"); kx_jw_int(&w, 1); }
+        kx_jw_key(&w, "per_min"); kx_jw_int(&w, r->rate_per_min);
+        kx_jw_key(&w, "tat_ns"); kx_jw_int(&w, (int64_t)r->rate_tat_ns);
+        kx_jw_obj_end(&w);
+    }
     kx_jw_key(&w, "reason"); kx_jw_str(&w, reason_name(r->reason));
     if (r->event == KX_EV_EPOCH && r->restart) {       /* why this epoch began: supervisor restart */
         kx_jw_key(&w, "recovery"); kx_jw_obj_begin(&w);
@@ -205,8 +221,8 @@ static int write_capsule(kx_jw_t *w, const kx_capsule_rec_t *r, const kx_capsule
         size_t L;
         if (r->gate != KX_GATE_NONE) {
             memcpy(cid, "com.kervix.constitution.", 24);
-            L = strlen(GATE_NAMES[r->gate <= KX_GATE_REQUIRE ? r->gate : 0]);
-            memcpy(cid + 24, GATE_NAMES[r->gate <= KX_GATE_REQUIRE ? r->gate : 0], L + 1);
+            L = strlen(GATE_NAMES[r->gate <= KX_GATE__MAX ? r->gate : 0]);
+            memcpy(cid + 24, GATE_NAMES[r->gate <= KX_GATE__MAX ? r->gate : 0], L + 1);
         } else {
             memcpy(cid, "com.kervix.policy.", 18);
             const char *rid = r->rule_id[0] ? r->rule_id : "default";
