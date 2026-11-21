@@ -107,7 +107,7 @@ Each QNX product or technology below is listed with what it does in Kervix and w
 - **Where:**
   - `propose()` in [`kervixd.c`](https://github.com/decionis/kervix/blob/master/target/kervixd/kervixd.c). The caller's identity comes from the kernel-stamped `ctp->info.type_id` / `ctp->info.pid`, never from the message payload.
   - Priorities: `on -p 30` / `on -p 10` in [`post_start.custom`](https://github.com/decionis/kervix/blob/master/target/image/snippets/post_start.custom).
-  - Measurement: [`target/kx-bench/kx_bench.c`](https://github.com/decionis/kervix/blob/master/target/kx-bench/kx_bench.c) section 3. Result: HMI p99 under a 16.6k proposals/s flood is **1.03×** idle, emulated ([`bench-qnx-qemu.txt`](https://github.com/decionis/kervix/blob/master/docs/evidence/bench-qnx-qemu.txt)).
+  - Measurement: [`target/kx-bench/kx_bench.c`](https://github.com/decionis/kervix/blob/master/target/kx-bench/kx_bench.c) section 3. The 21 November QEMU run reports HMI p99 under a **13,524 proposals/s** flood at **0.71× idle** (four threads, zero flood errors; [recorded benchmark](https://github.com/decionis/kervix/blob/master/docs/evidence/demo-2026-11-21/benchmark.txt)). This is an emulated functional ratio. The same log records K3 closing safety actions during ledger pressure and recovery after draining.
 
 ### Deferred replies and unblock handling
 - **What:** an agent waiting for the driver's approval stays **REPLY-blocked in the kernel**, with no polling. `kervixd` keeps the `rcvid` and replies when the driver decides or the timeout fires. If the waiting client is killed, the unblock pulse releases it.
@@ -177,7 +177,7 @@ Each QNX product or technology below is listed with what it does in Kervix and w
 ### QNX timing: ClockCycles() and the system page
 - **What:** in-server decision latency and the benchmark's round-trip times use `ClockCycles()` with `SYSPAGE_ENTRY(qtime)->cycles_per_sec`.
 - **Where:** `propose()` in `kervixd.c`; [`kx_bench.c`](https://github.com/decionis/kervix/blob/master/target/kx-bench/kx_bench.c).
-- **Output:** the PROPOSE latency histogram in `/dev/kervix/stats` and on the dashboard. On QEMU it reads p50 39 µs / p99 167 µs and is labelled emulated.
+- **Output:** the PROPOSE latency histogram in `/dev/kervix/stats`. The QEMU dashboard omits absolute emulated latency; the [public demo](https://youtu.be/QaLS1neHT2s) shows the flood/idle ratio. Raspberry Pi hardware measurements remain pending.
 
 ### QNX OS utilities used by the tests and the demo
 - **What and where:**

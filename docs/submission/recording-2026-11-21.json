@@ -18,6 +18,18 @@
       "true_peak_dbtp": -1.46,
       "loudness_range_lu": 5.6,
       "no_clipping": true
+    },
+    "youtube": {
+      "url": "https://youtu.be/QaLS1neHT2s",
+      "video_id": "QaLS1neHT2s",
+      "channel": "Decionis",
+      "channel_id": "UCSfBZAQLtEQOaer9Na0QjfA",
+      "visibility": "public",
+      "published_on": "2026-11-21",
+      "subtitles": "English (United Kingdom), supplied SRT",
+      "thumbnail": "Original demo title card",
+      "youtube_checks": "No copyright issues found",
+      "synthetic_content_disclosed": true
     }
   },
   "verifier_release": {
@@ -64,7 +76,17 @@
   "pending": [
     "GitHub Support purge of PR #34 retained ref (removal ticket created after owner confirmed key rotation)",
     "Raspberry Pi 4 measurements and footage",
-    "Physical headset testing",
-    "Public YouTube upload"
-  ]
+    "Physical headset testing"
+  ],
+  "devpost": {
+    "url": "https://devpost.com/software/kervix",
+    "repository": "https://github.com/decionis/kervix",
+    "video_url": "https://youtu.be/QaLS1neHT2s",
+    "updated_on": "2026-11-21",
+    "submission_status": "draft",
+    "steps_complete": 4,
+    "steps_total": 5,
+    "story_and_evidence_updated": true,
+    "final_contest_submission_completed": false
+  }
 }

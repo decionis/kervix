@@ -14,7 +14,7 @@
 | Technology requirement explained: each QNX product, what it does, where to look | ✅ | [`additional-details.md`](additional-details.md) § How the project meets the technology requirement (paste into the Devpost field). |
 | Category | ✅ | Automotive & Mobility (select it in the Devpost form). |
 | Text description | ✅ | [`devpost.md`](devpost.md), paste-ready. Refresh the numbers after the RPi4 run. |
-| Demo video < 3:00, public on YouTube, showing it running **on the device** | 🟡 👤 | The **2:50 QEMU edition** is recorded with male narration and burned-in captions: [`recording-2026-11-21.md`](recording-2026-11-21.md). RPi4 footage/latency remains scheduled for Dec 3; public YouTube upload remains pending. |
+| Demo video < 3:00, public on YouTube, showing it running **on the device** | 🟡 👤 | The **2:50 QEMU edition** is [public on YouTube](https://youtu.be/QaLS1neHT2s), with male narration, burned-in captions and an English subtitle track. See [`recording-2026-11-21.md`](recording-2026-11-21.md). RPi4 footage/latency remains scheduled for Dec 3. |
 | Built during the hackathon | ✅ | Repository history starts Nov 20, 2026; disclosure in `devpost.md`. |
 | Pre-existing code disclosed | ✅ | `@decionis/verify` (pre-existing, Apache-2.0), disclosed in `devpost.md`, `README.md` and `THIRD_PARTY.md`. |
 
