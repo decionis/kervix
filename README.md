@@ -1,5 +1,13 @@
 # Kervix
 
+[![host CI](https://github.com/decionis/kervix/actions/workflows/host.yml/badge.svg?branch=master)](https://github.com/decionis/kervix/actions/workflows/host.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![QNX 8.0](https://img.shields.io/badge/QNX-8.0-0a7bbb.svg)](https://www.qnx.com/developers/docs/8.0/)
+[![secpol: secure image 29/29](https://img.shields.io/badge/selftest%20%28secure%20image%29-29%2F29-2ea44f.svg)](docs/evidence/selftest-qnx-qemu-secure.txt)
+[![Node ≥ 22.18](https://img.shields.io/badge/node-%E2%89%A5%2022.18-339933.svg)](package.json)
+[![Evidence: AAC draft-04](https://img.shields.io/badge/evidence-AAC%20draft--04-6f42c1.svg)](docs/03-architecture.md#82-capsules-aac-draft-04--mapping-frozen-by-spike-s5)
+[![QNX Global Hackathon 2026](https://img.shields.io/badge/QNX%20Hackathon-2026-orange.svg)](https://qnx.devpost.com)
+
 **Kernel-enforced execution authority for software-defined vehicles, on QNX 8.0.**
 
 AI agents *propose* vehicle actions. Kervix decides in microseconds, on live vehicle state, whether each action is **ALLOWED** (with a single-use grant), **ESCALATED** to the driver, or **BLOCKED**. QNX security policies make every other path to an actuator impossible at the kernel's IPC layer. Every decision becomes an Ed25519-signed, chained [Agent Action Capsule](docs/03-architecture.md#82-capsules-aac-draft-04--mapping-frozen-by-spike-s5) that anyone can verify, and replay, offline.
@@ -136,7 +144,11 @@ codelab/     notes for the QNX codelab: secpol, resource managers, qcrypto, supe
 
 ## Disclosure
 
-Kervix was built during the hackathon window. It depends on [`@decionis/verify`](https://www.npmjs.com/package/@decionis/verify), an open-source AAC verifier by the same author that **predates the hackathon**, used here only as a verification dependency. Registering the `follows` relation and the `vehicle.*` effect namespace in that verifier is an upstream contribution made during the hackathon ([decionis/Decionis#1752](https://github.com/decionis/Decionis/pull/1752), in review); until it is released, `kervix-verify` reports them as informational findings.
+Kervix was built during the hackathon window. It depends on [`@decionis/verify`](https://www.npmjs.com/package/@decionis/verify), an open-source AAC verifier by the same author that **predates the hackathon**, used here only as a verification dependency. Registering the `follows` relation and the `vehicle.*` effect namespace in that verifier is an upstream contribution made during the hackathon ([decionis/Decionis#1752](https://github.com/decionis/Decionis/pull/1752), merged); until a `@decionis/verify` release includes it, `kervix-verify` reports them as informational findings.
+
+## Third-party software
+
+See [THIRD_PARTY.md](THIRD_PARTY.md). Nothing from the QNX SDP is redistributed.
 
 ## License
 
