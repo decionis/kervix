@@ -98,7 +98,7 @@ Tiers: **M** = Must (qualify and compete), **S** = Should (win), **C** = Could (
 | P6 | **Deterministic verdict replay**: the verifier re-runs the *same* portable policy core against recorded telemetry and checks that every verdict reproduces | S | IA TI |
 | P7 | Signed **policy bundles** with author ≠ approver (two Ed25519 signatures). Policy hash stamped in every capsule. | S | PI |
 | P8 | In-browser verification (policy core compiled to WASM + WebCrypto Ed25519) | C | D |
-| P9 | **Upstream AAC registry contribution**: `follows` chain relation + `vehicle.*` effect-type namespace, released in `@decionis/verify` 0.6.0. Decision D3. | S | PI TI |
+| P9 | **Upstream AAC registry contribution**: `follows` chain relation + `vehicle.*` effect-type namespace, released in `@decionis/verify` 0.6.1. Decision D3. | S | PI TI |
 
 ### 4.3 Vehicle simulation and actuation
 

@@ -1,0 +1,40 @@
+{
+  "dossier": "docs/evidence/demo-2026-11-21/dossier",
+  "verified": true,
+  "capsules": 7,
+  "seq": [
+    1,
+    7
+  ],
+  "epochs": 1,
+  "recoveries": [],
+  "events": {
+    "epoch": 1,
+    "decision": 3,
+    "effect": 2,
+    "escalation_resolved": 1
+  },
+  "vehicle_key": "cLysYznB-cu-pkU6MNEamYu7p0OfVVN40cTBLdTyZRQ",
+  "head": "6c023b151a862eec16a866f13e01369ea26e29ebc5ef9387019dfb126886bc39",
+  "replay": {
+    "match": 3,
+    "mismatch": 0,
+    "unknown_policy": 0,
+    "skipped": 0,
+    "k3": 0,
+    "capacity": 0,
+    "policies": [
+      "sha256:8539d7116aab449102949f406a6b74cee79bb4580018a6c721556c4f89056493"
+    ]
+  },
+  "rate": {
+    "checked": 2,
+    "limited": 0,
+    "epochs_without": 0,
+    "gaps": 0
+  },
+  "executed": 2,
+  "policies": [],
+  "findings": [],
+  "informational": {}
+}

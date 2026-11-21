@@ -123,7 +123,7 @@ Legend:
 |---|---|---|---|
 | Sat Nov 28 | Ledger writer thread: capsule JCS, capsule_id, Ed25519 COSE_Sign1 template, key generation, JWK export | `kervix-verify` v0: Class 1 + envelope + key pinning + chain continuity | **HW-1:** RPi4 network/ssh, `deploy-rpi`, run M1 tests on RPi4 |
 | Sun Nov 29 | Ledger file format, fsync batching, torn-tail recovery, `epoch_boundary`; K3 ring pressure | `kervix-verify`: semantic invariants + tamper tests | **U1:** upstream AAC registry change in the Decionis repo (`follows`, `vehicle.*`) + tests |
-| Mon Nov 30 | **secpol** full policy, four channels, privilege drop, `/dev/sdv/actuators/raw`, image startup | Conformance CI: committed dossier verified on each push | U1: release `@decionis/verify` 0.6.0; pin it in Kervix |
+| Mon Nov 30 | **secpol** full policy, four channels, privilege drop, `/dev/sdv/actuators/raw`, image startup | Conformance CI: committed dossier verified on each push | U1: release `@decionis/verify` 0.6.1; pin it in Kervix |
 | Tue Dec 1 | Escalations: queue, `ionotify`, RESOLVE, deferred AWAIT, timeout, HMI priority | `kxpolicy` signed bundles (author ≠ approver) + POLICY_ACTIVATE client | — |
 | Wed Dec 2 | `kx-supervisor`, `kx-rogue` (5 attacks), malloc guard, rate limiter, shadow mode | **Replay:** `kervix-verify --replay` via host build of `libkxcore` | — |
 | Thu Dec 3 | **`kx-selftest`**: all scenarios with a PASS/FAIL table, on QEMU + RPi4; fix aarch64 issues | Buffer / catch-up | **Gate:** RPi4 working? If not, switch to §3.3 |
@@ -131,7 +131,7 @@ Legend:
 **M2 acceptance:**
 - `kx-selftest` 100% PASS on QEMU and RPi4.
 - `kervix-verify` reports signatures 100%, chain continuous and replay 100%.
-- `@decionis/verify` 0.6.0 passes every capsule and envelope with **no `info` findings for `follows` or `vehicle.*`**.
+- `@decionis/verify` 0.6.1 passes every capsule and envelope with **no `info` findings for `follows` or `vehicle.*`**.
 
 ### M3: Experience
 
@@ -191,8 +191,8 @@ In `~/develop/products/Decionis`, on a feature branch, opened as a PR for your r
 1. Spec text: add the `follows` relation and the `vehicle.` effect-type namespace to the AAC draft-04 registry section.
 2. `packages/dossier-verify/src/aac-v04.ts`: add `follows` to `REGISTRY.relation`; namespace match for `effect.type`.
 3. Tests: registered, unregistered and malformed values; one full Kervix-shaped capsule fixture.
-4. CHANGELOG, then release **0.6.0** to npm (your publish step).
-5. Kervix's `host/verify` pins `@decionis/verify@^0.6.0`. Until it is published, it uses a local tarball.
+4. CHANGELOG, then release **0.6.1** to npm (your publish step).
+5. Published on 2026-11-21 through Decionis#1762. Kervix pins exact `@decionis/verify@0.6.1` in `host/verify`, `tests/conformance` and `spikes/s5-aac`; no local tarball is needed.
 
 ---
 

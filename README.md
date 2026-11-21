@@ -10,7 +10,7 @@
 
 **Kernel-enforced execution authority for software-defined vehicles, on QNX 8.0.**
 
-AI agents *propose* vehicle actions. Kervix decides in microseconds, on live vehicle state, whether each action is **ALLOWED** (with a single-use grant), **ESCALATED** to the driver, or **BLOCKED**. QNX security policies make every other path to an actuator impossible at the kernel's IPC layer. Every decision becomes an Ed25519-signed, chained [Agent Action Capsule](docs/03-architecture.md#82-capsules-aac-draft-04--mapping-frozen-by-spike-s5) that anyone can verify, and replay, offline.
+AI agents *propose* vehicle actions. Kervix decides on live vehicle state whether each action is **ALLOWED** (with a single-use grant), **ESCALATED** to the driver, or **BLOCKED**. QNX security policies make every other path to an actuator impossible at the kernel's IPC layer. Every decision becomes an Ed25519-signed, chained [Agent Action Capsule](docs/03-architecture.md#82-capsules-aac-draft-04--mapping-frozen-by-spike-s5) that anyone can verify, and replay, offline.
 
 **Propose. Prove. Actuate.**
 
@@ -18,10 +18,16 @@ AI agents *propose* vehicle actions. Kervix decides in microseconds, on live veh
 
 *The dashboard, live against QNX 8.0 in QEMU. The agent asked to flash the brake ECU; Kervix escalated it to the driver. Every verdict in the feed was decided by `kervixd` on QNX.*
 
+**Recorded demo:** [21 November recording and evidence](docs/submission/recording-2026-11-21.md), following the ten-scene shot list. QEMU emulation is labelled throughout; hardware latency and a physical headset are not claimed.
+
 | The vehicle, as QNX reports it | After the driver approves an OTA update |
 |---|---|
-| ![Procedural 3D twin: front-left door unlocked (green), front-left window down, hazards on, charging](docs/images/twin.png) | ![The twin during an approved OTA flash: body glows, halo turns, toast shows ALLOW HUMAN_APPROVED](docs/images/twin-ota-approved.png) |
-| The procedural 3D twin renders **telemetry, never requests**. An action shows up only after Kervix allowed it, the actuator applied it, and the simulator published the new state. Here: front-left door unlocked (green light), its window lowered, hazards on, charge port glowing. | The driver approved; the agent's waiting request received a fresh grant and executed. The vehicle reports the flash in progress (blue glow, turning halo). The approval is a signed capsule naming the human approver. |
+| ![Procedural 3D twin: city traffic, cabin setpoint 22.5 degrees C, ALLOW cabin.climate.set](docs/images/twin.png) | ![The twin during an approved OTA flash: blue halo, parked and charging, ALLOW HUMAN_APPROVED](docs/images/twin-ota-approved.png) |
+| The procedural 3D twin renders **telemetry, never requests**. Here the driver was cold: Kervix allowed the climate change, the actuator applied it, and the vehicle reported the **22.5°C** setpoint. | The dashboard approval gave the waiting request a fresh grant and it executed. The vehicle reports the flash in progress (blue halo), at **0 km/h, gear P, park brake on**. The approval is a signed capsule naming `hmi:dashboard-driver`. |
+
+The same OTA proposal while moving is refused on the actual target:
+
+![Highway at 110 km/h: OTA flash BLOCK R156_NOT_SAFE_STATE](docs/images/twin-blocked.png)
 
 **The driver's on-screen notification.** Actions that need a human are pushed to the HMI by a kernel pulse (no polling). The driver reads them in their own terms: what would happen, why they are asked, what it means for them, and that not answering means no. Rule ids, action ids and digests stay in the footer and the signed ledger. On approval, the action is re-checked on live vehicle state before any grant is issued:
 
@@ -38,9 +44,11 @@ Edit one record, even back-dating it by a few milliseconds, and verification fai
 
 | Verified | One record edited |
 |---|---|
-| ![Ledger explorer: 10 signed capsules, VERIFIED, replay 4/4](docs/images/ledger-verified.png) | ![Capsule #7 back-dated by a few ms: NOT VERIFIED, TAMPERED at capsule #7](docs/images/ledger-tampered.png) |
+| ![Ledger explorer: 7 signed capsules, VERIFIED, replay 3/3, capsule 4 selected](docs/images/ledger-verified.png) | ![A verification copy of capsule 4 edited: NOT VERIFIED, TAMPERED at capsule 4](docs/images/ledger-tampered.png) |
 
-If the authority itself dies, nothing moves: [AUTHORITY OFFLINE · ACTUATION LOCKED](docs/evidence/dashboard-qnx-qemu-authority-offline.png), until `kx-supervisor` brings it back (≈ 0.1 s under emulation) with the restart recorded in the signed ledger.
+The original seven-capsule dossier remains intact and [verifies offline](docs/evidence/demo-2026-11-21/README.md) with `@decionis/verify` **0.6.1**, with no findings. The edit demonstration changes only a verification copy.
+
+If the authority itself dies, nothing moves: [AUTHORITY OFFLINE · ACTUATION LOCKED](docs/evidence/demo-2026-11-21/authority-offline.png), until `kx-supervisor` brings it back with the restart recorded in the signed ledger.
 
 > 🚧 Built for the QNX Global Hackathon (Nov 20 – Dec 15, 2026). Status: [`docs/progress.md`](docs/progress.md). Design: [`docs/`](docs/README.md).
 
@@ -83,7 +91,7 @@ Details: [architecture](docs/03-architecture.md) · [design](docs/02-product-des
 | The run's signed dossier, verified offline on the host | **VERIFIED**: signatures, chain across restarts, 17/17 decisions replayed |
 | Red team (`kx-rogue`, 10 attacks as the deployed agent) | **0/10 open**, all refused by the kernel |
 | Signed policy updates (author ≠ approver, verified on the vehicle, activated, persisted, replayed offline) | **15/15** · `make target-policy` |
-| `kx-bench` (QEMU/TCG, emulated: ratios matter, not µs) | PROPOSE p50 39 µs / p99 167 µs in `kervixd`; the driver HMI's p99 is **1.03×** idle under a 16.6k proposals/s agent flood · [output](docs/evidence/bench-qnx-qemu.txt) |
+| `kx-bench` (21 November QEMU/TCG functional run) | The driver HMI's p99 is **0.71×** idle under a **13,524 proposals/s** agent flood, four threads, zero flood errors · [raw output](docs/evidence/demo-2026-11-21/benchmark.txt). K3 closed safety actions during ledger pressure, then recovered after draining. |
 
 Host CI runs on every push: the portable C core and its tests (including ASan/UBSan and TSan), a libFuzzer run on the gateway parser, AAC/COSE conformance against `@decionis/verify`, verification of a committed QNX-signed dossier, the replay engine rebuilt from source, and the TypeScript bridge, agent and dashboard.
 
@@ -146,7 +154,7 @@ codelab/     notes for the QNX codelab: secpol, resource managers, qcrypto, supe
 
 ## Disclosure
 
-Kervix was built during the hackathon window. It depends on [`@decionis/verify`](https://www.npmjs.com/package/@decionis/verify), an open-source AAC verifier by the same author that **predates the hackathon**, used here only as a verification dependency. Registering the `follows` relation and the `vehicle.*` effect namespace in that verifier is an upstream contribution made during the hackathon ([decionis/Decionis#1752](https://github.com/decionis/Decionis/pull/1752), merged); until a `@decionis/verify` release includes it, `kervix-verify` reports them as informational findings.
+Kervix was built during the hackathon window. It depends on [`@decionis/verify`](https://www.npmjs.com/package/@decionis/verify), an open-source AAC verifier by the same author that **predates the hackathon**, used here only as a verification dependency. Registering the `follows` relation and the `vehicle.*` effect namespace in that verifier is an upstream contribution made during the hackathon ([decionis/Decionis#1752](https://github.com/decionis/Decionis/pull/1752)). It is published in **0.6.1** ([release PR #1762](https://github.com/decionis/Decionis/pull/1762), [successful publish](https://github.com/decionis/Decionis/actions/runs/44865404373)) and pinned exactly in all three Kervix verifier workspaces. The recorded dossier has no `follows` or `vehicle.*` informational findings.
 
 ## Third-party software
 

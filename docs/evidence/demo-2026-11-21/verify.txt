@@ -1,0 +1,11 @@
+Kervix dossier docs/evidence/demo-2026-11-21/dossier
+✔ manifest     7 capsule(s), seq 1..7
+✔ key          Ed25519 kid cLysYznB-cu-pkU6MNEamYu7p0OfVVN40cTBLdTyZRQ
+✔ capsules     canonical, self-identifying, AAC draft-04 Class 1 (@decionis/verify)
+✔ signatures   every envelope signed by the pinned vehicle key
+✔ chain        continuous, 1 epoch(s)
+✔ semantics    no unauthorized or repeated actuation (2 executed grant(s))
+✔ replay       3/3 decision(s) reproduced by the vehicle's own policy core (WASM)
+✔ rate         2 decision(s) re-checked against their rate limit by the vehicle's own limiter (WASM), 0 limited
+  events: epoch=1  decision=3  effect=2  escalation_resolved=1
+VERIFIED

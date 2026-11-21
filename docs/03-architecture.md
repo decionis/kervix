@@ -403,7 +403,7 @@ Every lifecycle event produces one capsule. Common members:
   - `result` pass/fail, `blocking`, and `evidence_digest` = sha256(JCS(inputs)).
 - **Kervix evidence** goes in the top-level extension member `evidence.kervix` (allowed: the schema has `additionalProperties: true`, and it is covered by `capsule_id`):
   - `verdict`, `reason`, `rule_id`, `intent_hash`, `policy_hash`, the telemetry snapshot (integers), `grant_id`, `eval_ns`, `ledger_seq`.
-- `follows` and `vehicle.*` are registered upstream by U1 (`@decionis/verify` ≥ 0.6.0). Before U1 they produce `info` findings only.
+- `follows` and `vehicle.*` are registered upstream by U1 (`@decionis/verify` ≥ 0.6.1). Before U1 they produce `info` findings only.
 - Reference implementation and executable proof: `spikes/s5-aac/s5.mjs` (`npm run spike:s5`).
 - **Implemented in C (M2):** `kervix/capsule.h` (`kx_capsule_build`, two-pass: identity from the preimage, then the final capsule) and `kervix/cose.h` (envelope template, base64url). `tests/conformance/capsule-parity.mjs` checks 17 capsules covering every event and chain relation against `@decionis/verify`, for capsules built on the host **and on QNX** (byte-identical).
 - **`evidence.kervix` schema** (all integers or ASCII; keys sorted):

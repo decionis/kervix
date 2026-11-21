@@ -8,6 +8,6 @@
     "start": "node s5.mjs"
   },
   "dependencies": {
-    "@decionis/verify": "0.5.0"
+    "@decionis/verify": "0.6.1"
   }
 }

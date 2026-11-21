@@ -132,6 +132,12 @@ export function LatencyHistogram({ s, emulated }: { s: Stats | null; emulated: b
   const slot = h.length ? (W - padL) / h.length : 0;
   const bw = Math.min(24, Math.max(4, slot - 2));
   const y = (n: number) => padT + (H - padT - padB) * (1 - n / top);
+  if (emulated) return (
+    <div className="card">
+      <h2>QNX 8.0 · QEMU functional run</h2>
+      <p className="emulation-note">Real policy decisions and signed records. Absolute latency is omitted in emulation; hardware timing requires a Raspberry Pi measurement.</p>
+    </div>
+  );
   return (
     <div className="card">
       <h2>
@@ -206,7 +212,7 @@ export function LatencyHistogram({ s, emulated }: { s: Stats | null; emulated: b
 
 // ---------------------------------------------------------------- feed
 
-function line(e: FeedEvent): React.ReactNode {
+function line(e: FeedEvent, emulated: boolean): React.ReactNode {
   const m = e.msg as GwMsg & Record<string, unknown>;
   const intent = m.intent as { action: string; actor: string; params: Record<string, unknown> } | undefined;
   switch (m.kind) {
@@ -227,7 +233,7 @@ function line(e: FeedEvent): React.ReactNode {
           <Badge v={String(m.verdict)} /> <code>{intent?.action}</code> {String(m.reason)}
           <span className="meta">
             {" "}· {m.kind === "resolution" ? (m.reason === "ESCALATION_TIMEOUT" ? "nobody answered in time" : "after the driver's decision") : `rule ${m.rule || "default"}`}
-            {Number(m.eval_ns) > 0 ? ` · ${(Number(m.eval_ns) / 1000).toFixed(0)} µs in kervixd` : ""}
+            {!emulated && Number(m.eval_ns) > 0 ? ` · ${(Number(m.eval_ns) / 1000).toFixed(0)} µs in kervixd` : ""}
           </span>
         </span>
       );
@@ -248,8 +254,8 @@ function line(e: FeedEvent): React.ReactNode {
   }
 }
 
-export function Feed({ feed }: { feed: FeedEvent[] }) {
-  const rows = feed.map((e) => [e, line(e)] as const).filter(([, n]) => n !== null).slice(-80).reverse();
+export function Feed({ feed, emulated = false }: { feed: FeedEvent[]; emulated?: boolean }) {
+  const rows = feed.map((e) => [e, line(e, emulated)] as const).filter(([, n]) => n !== null).slice(-80).reverse();
   return (
     <div className="card feed">
       <h2>

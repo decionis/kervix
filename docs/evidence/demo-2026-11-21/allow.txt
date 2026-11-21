@@ -1,0 +1,7 @@
+== Scene 1, helpful: the driver is cold in city traffic (ALLOW)
+driver> I'm freezing.
+  (thinking) The driver is cold. Raising the cabin temperature is a comfort change I can propose right away: 22.5 degrees.
+  tool cabin_climate_set {"temp_dc":225}
+  -> {"verdict":"ALLOW","reason":"OK","explain":"Allowed by policy.","rule":"climate-any","intent_hash":"sha256:4b4de879b6f8dee04b156f68b1c903f39137311b0787982294092b237215c559","executed":true}
+agent> I've turned the cabin up to 22.5 degrees.
+PASS  s1-cold: cabin_climate_set ALLOW

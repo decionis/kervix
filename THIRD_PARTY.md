@@ -32,7 +32,7 @@ These run in the host tools (bridge, agent, verifier, policy compiler) or are bu
 | @anthropic-ai/sdk | 1.12.0 | Apache-2.0 |
 | @babel/runtime | 7.29.15 | MIT |
 | @bufbuild/protobuf | 2.17.0 | (Apache-2.0 AND BSD-3-Clause) |
-| @decionis/verify | 0.5.0 | Apache-2.0 |
+| @decionis/verify | 0.6.1 | Apache-2.0 |
 | @dimforge/rapier3d-compat | 0.12.0 | Apache-2.0 |
 | @emotion/is-prop-valid | 1.4.0 | MIT |
 | @emotion/memoize | 0.9.0 | MIT |

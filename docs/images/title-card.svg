@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="title desc">
+  <title id="title">Kervix — Propose. Prove. Actuate.</title>
+  <desc id="desc">Kervix, an execution authority built on QNX 8.0. Source at github.com/decionis/kervix. This demo uses a QEMU-emulated target.</desc>
+  <rect width="1920" height="1080" fill="#080d14"/>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <path d="M120 280V644M142 456 284 280M142 456 294 644" fill="none" stroke="#5badff" stroke-width="22" stroke-linecap="square"/>
+    <text x="372" y="438" fill="#f5f8ff" font-size="136" font-weight="700" letter-spacing="8">KERVIX</text>
+    <text x="378" y="536" fill="#b2d8ff" font-size="52">Propose. Prove. Actuate.</text>
+    <text x="380" y="620" fill="#d0dbea" font-size="32">Built on QNX 8.0</text>
+    <path d="M380 682H1760" stroke="#304055" stroke-width="2"/>
+    <text x="380" y="748" fill="#f5f8ff" font-size="34">github.com/decionis/kervix</text>
+    <text x="380" y="803" fill="#9dacbf" font-size="25">Recorded on a secure QNX image in QEMU · 21 November 2026</text>
+  </g>
+</svg>

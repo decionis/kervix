@@ -24,7 +24,7 @@ export function App() {
         {state.fake && <div className="fakebar">FAKE TARGET: UI development only. No Kervix, no QNX, nothing is decided or signed.</div>}
         <header className="top">
           <div className="brand">
-            KERVIX<small>execution authority on QNX 8.0 · {state.target || "…"}</small>
+            KERVIX<small>QNX 8.0 · {emulated ? "QEMU emulation" : state.target || "…"}</small>
           </div>
           <nav className="tabs">
             <button className={view === "live" ? "on" : ""} onClick={() => setView("live")}>Live</button>
@@ -92,7 +92,7 @@ export function App() {
             <Tiles s={state.stats} />
           </div>
           <LatencyHistogram s={state.stats} emulated={emulated} />
-          <Feed feed={state.feed} />
+          <Feed feed={state.feed} emulated={emulated} />
         </section>
       </main>}
     </div>

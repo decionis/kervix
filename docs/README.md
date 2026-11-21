@@ -33,7 +33,7 @@ QNX Global Hackathon (Devpost) · Category **Automotive & Mobility** · Bonus ta
 - **Solo.** The plan is re-sequenced, with early cut triggers.
 - **No hardware yet; RPi4 within a week.** QEMU is primary until about Nov 27, and RPi4 is a hard gate on Dec 3.
 - **3D on-screen car (Must) + optional WebXR (Could).**
-- **Register `follows` + `vehicle.*` upstream in AAC** (work item U1, `@decionis/verify` 0.6.0).
+- **Register `follows` + `vehicle.*` upstream in AAC** (work item U1, `@decionis/verify` 0.6.1).
 
 **Discovered:**
 - **H1:** your Mac is an Apple M1 Pro, and **QNX SDP 8.0 doesn't support macOS or ARM hosts.** We use QNX's documented macOS workflow (Linux host tools in an x86_64 Docker container, QEMU on the Mac), with a cloud x86 Linux VM as the fallback. Spike S0 decides it on day 1.

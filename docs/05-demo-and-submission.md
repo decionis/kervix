@@ -63,7 +63,7 @@ Production notes:
 4. **Challenges**: secpol channel typing, TOCTOU interlocks, keeping signing off the hot path.
 5. **Accomplishments**: measured numbers, the selftest table, replay 100%.
 6. **What we learned**: QNX 8.0 changes (PPS/APS gone, io-sock, slog2).
-7. **Upstream contribution**: registered the `follows` chain relation and the `vehicle.*` effect-type namespace in the Agent Action Capsule registry (`@decionis/verify` 0.6.0).
+7. **Upstream contribution**: registered the `follows` chain relation and the `vehicle.*` effect-type namespace in the Agent Action Capsule registry (`@decionis/verify` 0.6.1).
 8. **What's next**: real CAN/SOME-IP gateway, QNX Hypervisor guest for the agent domain, HSM-backed keys, Kuksa/VSS databroker adapter, fleet dossier ingestion via hosted Decionis.
 9. **Built with** tags: qnx, c, resource-manager, secpol, typescript, react, three.js, claude, mcp, ed25519.
 

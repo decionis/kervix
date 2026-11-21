@@ -49,7 +49,7 @@ Underneath that:
   - one-way privilege drops (`derive_type` + `secpol_transition_type`);
   - `restricted` types for development;
   - a **`--secpol=secure` release image**: one complete policy, nothing runs untyped, the root shell is confined. Its system half is harvested with `secpolgenerate` and reviewed; `secpolgenerate` runs in monitor mode for the refusal log.
-- **Synchronous message passing and priority inheritance:** the driver HMI gateway runs at priority 30 and the agent's at 10. On QEMU, the HMI's p99 round trip under a 16.6k proposals/s agent flood is **1.03× idle**.
+- **Synchronous message passing and priority inheritance:** the driver HMI gateway runs at priority 30 and the agent's at 10. In the recorded 21 November QEMU run, the HMI's p99 round trip under a 13,524 proposals/s agent flood is **0.71× idle** (four threads, zero flood errors). This is an emulated functional ratio, not a hardware latency claim; the raw output also records K3 closing safety actions during ledger pressure and recovering after draining.
 - **Deferred replies:** an agent waiting for the driver is REPLY-blocked in the kernel with no polling. Unblock pulses release it if it is killed, and registered pulses (`MsgRegisterEvent`) push escalations to the HMI.
 - **Telemetry:** a 100 Hz simulator publishes through a single-writer **seqlock in shared memory**, mapped read-only by everyone else (TSan-clean).
 - **qcrypto:** Ed25519 signing of every capsule, verification of policy signatures, and a DRBG for grant ids and per-boot keys.
@@ -103,7 +103,7 @@ Underneath that:
 
 ## Upstream contribution
 
-I registered the AAC `follows` chain relation and the `vehicle.*` effect-type namespace in the Agent Action Capsule verifier ([decionis/Decionis#1752](https://github.com/decionis/Decionis/pull/1752), merged during the hackathon). Until the next `@decionis/verify` release ships it, `kervix-verify` reports those two as informational findings.
+I registered the AAC `follows` chain relation and the `vehicle.*` effect-type namespace in the Agent Action Capsule verifier ([decionis/Decionis#1752](https://github.com/decionis/Decionis/pull/1752), merged during the hackathon). It ships in **`@decionis/verify` 0.6.1**, published through [Decionis#1762](https://github.com/decionis/Decionis/pull/1762) and pinned exactly in all three Kervix verifier workspaces. The [new recorded dossier](../evidence/demo-2026-11-21/README.md) verifies seven capsules and replays all three decisions with zero findings.
 
 ## What's next
 
@@ -121,10 +121,10 @@ I registered the AAC `follows` chain relation and the `vehicle.*` effect-type na
 
 - **Without QNX** (any machine with Node ≥ 22.18): `npm ci && make test`, then `node host/verify/kervix-verify.mjs tests/fixtures/dossier-qnx-qemu-2026-11-20`. This verifies a ledger signed on QNX, offline.
 - **With QNX SDP 8.0:** `make target-selftest` boots QNX in QEMU, runs all 31 checks and verifies the run's ledger. `make codelab` runs the tutorial. See the [README](../../README.md#build-and-run).
-- **Evidence:** [selftest tables](../evidence/), [benchmark](../evidence/bench-qnx-qemu.txt), [live Claude transcript and its signed ledger](../evidence/live-claude-2026-11-21.md), [screenshots](../images/).
+- **Evidence:** [selftest tables](../evidence/), [recorded benchmark](../evidence/demo-2026-11-21/benchmark.txt), [live Claude transcript and its signed ledger](../evidence/live-claude-2026-11-21.md), [screenshots](../images/).
 
 ## Disclosures
 
-- **Built during the hackathon window**, starting Nov 20, 2026, by one developer, with Claude Code as coding assistant. The full history is in the repository: after the first two commits, every change landed through a pull request (34 merged by Nov 21).
+- **Built during the hackathon window**, starting Nov 20, 2026, by one developer, with Claude Code and Codex as coding assistants. The full history is in the repository: after the first two commits, every change landed through a pull request (34 merged by Nov 21).
 - **Pre-existing dependency:** `@decionis/verify` (Apache-2.0), an open-source AAC verifier by the same author that predates the hackathon. Kervix uses it unchanged. The registry contribution above is the only change made to it during the hackathon.
 - Third-party software and licences: [THIRD_PARTY.md](../../THIRD_PARTY.md). Nothing from the QNX SDP is redistributed.
