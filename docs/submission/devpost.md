@@ -1,6 +1,6 @@
 # Devpost submission text: Kervix
 
-> Paste-ready text for qnx.devpost.com. **Category: Automotive & Mobility.** Also entered for *Best Use of QNX-specific Technologies* and *Best Codelab*.
+> Paste-ready text for qnx.devpost.com. The two extra fields (build and run instructions; how the project meets the technology requirement) are in [`additional-details.md`](additional-details.md). **Category: Automotive & Mobility.** Also entered for *Best Use of QNX-specific Technologies* and *Best Codelab*.
 > Every number below links to evidence in the repository. QEMU numbers are labelled as emulated; the Raspberry Pi 4 measurements replace them once the board arrives (Dec 3).
 
 **Tagline:** *AI agents propose. QNX decides. Every decision is signed and can be replayed.*
