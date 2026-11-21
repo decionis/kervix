@@ -1,9 +1,9 @@
 {
-  "catalog_sha256": "d0db1757c6ede040080a6472049d7bb93b7df31f9cfd2145a4632b025d4545d0",
+  "catalog_sha256": "2f28390f6f5c199e27954f9aef8cd853ae08419d0243a9b84a6ffc0ad0a279b4",
   "tools": [
     {
       "name": "cabin_climate_set",
-      "description": "Set the driver-zone cabin temperature. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way.",
+      "description": "Set the driver-zone cabin temperature. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way. Rate limit: 10 back to back, then 30 per minute; more are BLOCKed with RATE_LIMITED.",
       "strict": true,
       "input_schema": {
         "type": "object",
@@ -21,7 +21,7 @@
     },
     {
       "name": "cabin_window_set",
-      "description": "Move one window to a position. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way.",
+      "description": "Move one window to a position. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way. Rate limit: 8 back to back, then 30 per minute; more are BLOCKed with RATE_LIMITED.",
       "strict": true,
       "input_schema": {
         "type": "object",
@@ -50,7 +50,7 @@
     },
     {
       "name": "body_door_unlock",
-      "description": "Unlock one door. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way.",
+      "description": "Unlock one door. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way. Rate limit: 6 back to back, then 12 per minute; more are BLOCKed with RATE_LIMITED.",
       "strict": true,
       "input_schema": {
         "type": "object",
@@ -74,7 +74,7 @@
     },
     {
       "name": "light_hazard_set",
-      "description": "Turn the hazard lights on or off. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way.",
+      "description": "Turn the hazard lights on or off. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way. Rate limit: 6 back to back, then 20 per minute; more are BLOCKed with RATE_LIMITED.",
       "strict": true,
       "input_schema": {
         "type": "object",
@@ -92,7 +92,7 @@
     },
     {
       "name": "adas_acc_set_speed",
-      "description": "Change the adaptive-cruise-control set speed. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way.",
+      "description": "Change the adaptive-cruise-control set speed. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way. Rate limit: 8 back to back, then 30 per minute; more are BLOCKed with RATE_LIMITED.",
       "strict": true,
       "input_schema": {
         "type": "object",
@@ -110,7 +110,7 @@
     },
     {
       "name": "battery_charge_limit_set",
-      "description": "Set the maximum state-of-charge for charging. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way.",
+      "description": "Set the maximum state-of-charge for charging. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: two_way. Rate limit: 4 back to back, then 6 per minute; more are BLOCKed with RATE_LIMITED.",
       "strict": true,
       "input_schema": {
         "type": "object",
@@ -128,7 +128,7 @@
     },
     {
       "name": "telematics_location_share",
-      "description": "Share live vehicle location with a recipient for a duration. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: one_way_recoverable.",
+      "description": "Share live vehicle location with a recipient for a duration. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: one_way_recoverable. Rate limit: 3 back to back, then 6 per minute; more are BLOCKed with RATE_LIMITED.",
       "strict": true,
       "input_schema": {
         "type": "object",
@@ -156,7 +156,7 @@
     },
     {
       "name": "diag_dtc_clear",
-      "description": "Clear stored diagnostic trouble codes on an ECU. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: one_way_recoverable.",
+      "description": "Clear stored diagnostic trouble codes on an ECU. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: one_way_recoverable. Rate limit: 3 back to back, then 6 per minute; more are BLOCKed with RATE_LIMITED.",
       "strict": true,
       "input_schema": {
         "type": "object",
@@ -181,7 +181,7 @@
     },
     {
       "name": "vehicle_immobilizer_engage",
-      "description": "Engage the immobilizer (vehicle cannot be driven). Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: one_way_recoverable.",
+      "description": "Engage the immobilizer (vehicle cannot be driven). Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: one_way_recoverable. Rate limit: 3 back to back, then 6 per minute; more are BLOCKed with RATE_LIMITED.",
       "strict": true,
       "input_schema": {
         "type": "object",
@@ -192,7 +192,7 @@
     },
     {
       "name": "chassis_brake_calibration_write",
-      "description": "Write a brake-system calibration blob. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: one_way_consequential.",
+      "description": "Write a brake-system calibration blob. Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: one_way_consequential. Rate limit: 3 back to back, then 6 per minute; more are BLOCKed with RATE_LIMITED.",
       "strict": true,
       "input_schema": {
         "type": "object",
@@ -222,7 +222,7 @@
     },
     {
       "name": "ota_ecu_flash",
-      "description": "Flash a firmware image to an ECU (vehicle unusable during flash). Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: one_way_consequential.",
+      "description": "Flash a firmware image to an ECU (vehicle unusable during flash). Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: one_way_consequential. Rate limit: 4 back to back, then 6 per minute; more are BLOCKed with RATE_LIMITED.",
       "strict": true,
       "input_schema": {
         "type": "object",

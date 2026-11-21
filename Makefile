@@ -4,7 +4,7 @@
 
 ARCHES ?= x86_64 aarch64le
 KX_CORE_TESTS = libkxcore/tests/test_catalog libkxcore/tests/test_policy libkxcore/tests/test_sha256 \
-                libkxcore/tests/test_intent libkxcore/tests/test_grant libkxcore/tests/test_capsule libkxcore/tests/test_ledger libkxsim/tests/test_sim libkxsim/tests/test_seqlock
+                libkxcore/tests/test_intent libkxcore/tests/test_grant libkxcore/tests/test_ratelimit libkxcore/tests/test_capsule libkxcore/tests/test_ledger libkxsim/tests/test_sim libkxsim/tests/test_seqlock
 
 help:
 	@echo "make host            build libkxcore + host tests (native)"

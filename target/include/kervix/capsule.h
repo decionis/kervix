@@ -20,6 +20,7 @@
 
 #include "kervix/abi.h"
 #include "kervix/policy.h"
+#include "kervix/ratelimit.h"
 
 #define KX_AAC_SPEC_VERSION   "draft-mih-scitt-agent-action-capsule-04"
 #define KX_CAPSULE_DEVELOPER  "kervix:authority:0.2.0"
@@ -67,6 +68,15 @@ typedef struct {
     uint32_t       restart;            /* EPOCH: supervisor restart count (0 = first start) */
     char           restart_cause[16];  /* EPOCH: why the previous instance ended, e.g. "SIGKILL" (printable ASCII) */
     uint8_t        prev_policy_hash[32]; /* POLICY: the policy it replaced (policy_hash = the new one) */
+    /* F12 rate limiter (kervix/ratelimit.h) */
+    uint8_t        has_rate;           /* DECISION: the limiter was consulted */
+    uint8_t        rate_overflow;      /* DECISION: no bucket left for the principal (limited) */
+    uint16_t       rate_burst, rate_per_min;
+    uint64_t       rate_tat_ns;        /* DECISION: bucket state before this proposal */
+    uint8_t        has_rate_config;    /* EPOCH: which principals this epoch rate-limits */
+    uint8_t        rate_all_types;     /* EPOCH: 1 = every principal (type names could not be resolved) */
+    uint8_t        n_rate_types;
+    uint32_t       rate_types[KX_RL_MAX_TYPES];
 } kx_capsule_rec_t;
 
 typedef struct {

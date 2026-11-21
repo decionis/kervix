@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sha256": "d0db1757c6ede040080a6472049d7bb93b7df31f9cfd2145a4632b025d4545d0",
+  "sha256": "2f28390f6f5c199e27954f9aef8cd853ae08419d0243a9b84a6ffc0ad0a279b4",
   "enums": {
     "gear": [
       "P",
@@ -219,6 +219,10 @@
       "irreversibility": "two_way",
       "safety": "qm",
       "privacy": false,
+      "rate": {
+        "burst": 10,
+        "per_min": 30
+      },
       "params": [
         {
           "name": "temp_dc",
@@ -240,6 +244,10 @@
       "irreversibility": "two_way",
       "safety": "qm",
       "privacy": false,
+      "rate": {
+        "burst": 8,
+        "per_min": 30
+      },
       "params": [
         {
           "name": "window",
@@ -270,6 +278,10 @@
       "irreversibility": "two_way",
       "safety": "safety",
       "privacy": false,
+      "rate": {
+        "burst": 6,
+        "per_min": 12
+      },
       "params": [
         {
           "name": "door",
@@ -291,6 +303,10 @@
       "irreversibility": "two_way",
       "safety": "qm",
       "privacy": false,
+      "rate": {
+        "burst": 6,
+        "per_min": 20
+      },
       "params": [
         {
           "name": "on",
@@ -312,6 +328,10 @@
       "irreversibility": "two_way",
       "safety": "safety",
       "privacy": false,
+      "rate": {
+        "burst": 8,
+        "per_min": 30
+      },
       "params": [
         {
           "name": "target_kph",
@@ -333,6 +353,10 @@
       "irreversibility": "two_way",
       "safety": "qm",
       "privacy": false,
+      "rate": {
+        "burst": 4,
+        "per_min": 6
+      },
       "params": [
         {
           "name": "pct",
@@ -354,6 +378,10 @@
       "irreversibility": "one_way_recoverable",
       "safety": "qm",
       "privacy": true,
+      "rate": {
+        "burst": 3,
+        "per_min": 6
+      },
       "params": [
         {
           "name": "recipient",
@@ -384,6 +412,10 @@
       "irreversibility": "one_way_recoverable",
       "safety": "safety",
       "privacy": false,
+      "rate": {
+        "burst": 3,
+        "per_min": 6
+      },
       "params": [
         {
           "name": "ecu",
@@ -405,6 +437,10 @@
       "irreversibility": "one_way_recoverable",
       "safety": "safety",
       "privacy": false,
+      "rate": {
+        "burst": 3,
+        "per_min": 6
+      },
       "params": [],
       "tool": "vehicle_immobilizer_engage",
       "effectType": "vehicle.vehicle.immobilizer.engage"
@@ -416,6 +452,10 @@
       "irreversibility": "one_way_consequential",
       "safety": "safety",
       "privacy": false,
+      "rate": {
+        "burst": 3,
+        "per_min": 6
+      },
       "params": [
         {
           "name": "ecu",
@@ -446,6 +486,10 @@
       "irreversibility": "one_way_consequential",
       "safety": "safety",
       "privacy": false,
+      "rate": {
+        "burst": 4,
+        "per_min": 6
+      },
       "params": [
         {
           "name": "ecu",

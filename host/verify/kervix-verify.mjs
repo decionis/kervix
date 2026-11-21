@@ -21,6 +21,9 @@
 //                 decision replays under the policy IT records: the built-in one, or a
 //                 signed bundle from policies/ (author + approver Ed25519 signatures
 //                 checked here). A decision under a policy the dossier lacks fails.
+//   8 rate        F12: every decision the rate limiter had to see records the bucket it was
+//                 made on; the vehicle's own GCRA (WASM) re-decides it, consecutive decisions
+//                 on one bucket must chain, and the limits must be the catalog's.
 // Exit: 0 verified, 1 a check failed, 2 usage / IO error.
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -47,7 +50,7 @@ try {
 }
 const ui = summary._ui;
 summary = { dossier: dir, ...summary };
-const { findings, policies, replay, recoveries, epochs, manifest, key, info, byEvent, known } = ui;
+const { findings, policies, replay, rate, recoveries, epochs, manifest, key, info, byEvent, known } = ui;
 const ok = summary.verified;
 if (asJson) {
   console.log(JSON.stringify(summary, null, 2));
@@ -67,7 +70,11 @@ if (asJson) {
          policies.map((p) => `${p.hash.slice(7, 19)}… author ${p.author}… approver ${p.approver}…`).join("; "));
   line("replay", !bad("replay").length, `${replay.match}/${replay.match + replay.mismatch + replay.unknown_policy} decision(s) reproduced by the vehicle's own policy core (WASM)` +
        (replay.policies.size > 1 ? ` under ${replay.policies.size} policies` : "") +
-       (replay.k3 ? `, ${replay.k3} ledger back-pressure override(s)` : ""));
+       (replay.k3 ? `, ${replay.k3} ledger back-pressure override(s)` : "") +
+       (replay.capacity ? `, ${replay.capacity} capacity override(s)` : ""));
+  if (rate.checked || bad("rate").length)
+    line("rate", !bad("rate").length, `${rate.checked} decision(s) re-checked against their rate limit by the vehicle's own limiter (WASM), ${rate.limited} limited`);
+  else if (rate.epochs_without === epochs && epochs) console.log(`· rate         not checked: the dossier's epochs predate the rate limiter (F12)`);
   console.log(`  events: ${Object.entries(byEvent).map(([e, n]) => `${e}=${n}`).join("  ")}`);
   for (const f of findings) console.log(`  FAIL [${f.check}] ${f.where}: ${f.message}`);
   for (const [m, n] of info) console.log(`  info ${n}x ${m}`);
