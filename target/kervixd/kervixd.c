@@ -18,6 +18,11 @@
  * Every lifecycle event is recorded as a signed AAC capsule by the ledger
  * writer (kxledger.c); "no audit, no action" feeds constitution K3.
  *
+ * F12: proposals from the rate-limited principals (-L secpol type names,
+ * default agentgw_t) pass a GCRA token bucket per (type, action) whenever the
+ * policy would ALLOW or ESCALATE; over the limit -> BLOCK RATE_LIMITED. The
+ * bucket state is recorded in the decision capsule so kervix-verify can re-run it.
+ *
  * usage: kervixd [-V vehicle_id] [-T tenant_uuid] [-A max_telemetry_age_ms] [-D datadir]
  *                [-R ledger_queue] [-S slow_ms (test)] [-v]
  */
@@ -47,6 +52,7 @@
 #include "kervix/intent.h"
 #include "kervix/kervix_abi.h"
 #include "kervix/policy.h"
+#include "kervix/ratelimit.h"
 #include "kervix/seqlock.h"
 #include "kervix/sha256.h"
 #include "kxledger.h"
@@ -72,6 +78,13 @@ static struct {
     uint64_t            esc_created, esc_approved, esc_denied, esc_expired, esc_reblocked;
     uint32_t            awaiting_effect;    /* redeemed grants whose EFFECT record is still due */
     uint64_t            hist[HIST_BUCKETS], lat_min_ns, lat_max_ns;
+    /* F12 rate limiter: buckets per (principal type, action); which principals it covers */
+    kx_rl_t             rl;
+    uint8_t             rl_all;                    /* 1 = every principal (names unresolvable: fail closed) */
+    uint8_t             rl_n;
+    uint32_t            rl_types[KX_RL_MAX_TYPES];
+    char                rl_desc[160];
+    uint64_t            rate_limited;
 } K = { .lock = PTHREAD_MUTEX_INITIALIZER, .lat_min_ns = UINT64_MAX };
 
 /* ---- escalations (pending human decisions) ---- */
@@ -257,6 +270,35 @@ static void esc_resolve(esc_t *e, int approve, const char *approver) {
     ring_hmi();
 }
 
+static int rate_limited_type(uint32_t type_id) {
+    if (K.rl_all) return 1;
+    for (uint8_t i = 0; i < K.rl_n; i++) if (K.rl_types[i] == type_id) return 1;
+    return 0;
+}
+
+/* -L: the principals to rate-limit, by secpol type name ("none" = nobody). A name
+ * that does not resolve (no policy in force, typo) rate-limits EVERY principal. */
+static void rate_config(const char *names) {
+    char buf[160];
+    snprintf(buf, sizeof buf, "%s", names);
+    K.rl_all = 0; K.rl_n = 0;
+    size_t o = 0;
+    K.rl_desc[0] = '\0';
+    if (strcmp(buf, "none") == 0) { snprintf(K.rl_desc, sizeof K.rl_desc, "none"); return; }
+    for (char *save = NULL, *t = strtok_r(buf, ",", &save); t; t = strtok_r(NULL, ",", &save)) {
+        uint32_t id = secpol_get_type_id(NULL, t);
+        if (id == SECPOL_INVALID_TYPE || K.rl_n == KX_RL_MAX_TYPES) {
+            printf("kervixd: rate limits: cannot resolve type %s: rate-limiting EVERY principal (fail closed)\n", t);
+            K.rl_all = 1; K.rl_n = 0;
+            snprintf(K.rl_desc, sizeof K.rl_desc, "every principal (%s unresolved)", t);
+            return;
+        }
+        K.rl_types[K.rl_n++] = id;
+        o += (size_t)snprintf(K.rl_desc + o, o < sizeof K.rl_desc ? sizeof K.rl_desc - o : 0, "%s%s(type %u)", o ? ", " : "", t, id);
+        if (o >= sizeof K.rl_desc) o = sizeof K.rl_desc - 1;
+    }
+}
+
 static void propose(resmgr_context_t *ctp, const kx_intent_t *in, kx_decision_t *d) {
     uint64_t c0 = ClockCycles();
     kx_client_t client = { ctp->info.type_id, ctp->info.pid };
@@ -278,6 +320,20 @@ static void propose(resmgr_context_t *ctp, const kx_intent_t *in, kx_decision_t 
         r.reason = KX_R_LEDGER_PRESSURE;
         r.gate = KX_GATE_K3_LEDGER;
         r.rule_index = -1;
+    }
+    /* F12: rate limit per (kernel-stamped principal type, action), only where the policy would act */
+    kx_rl_result_t rl;
+    memset(&rl, 0, sizeof rl);
+    int rated = -1;
+    if ((r.verdict == KX_VERDICT_ALLOW || r.verdict == KX_VERDICT_ESCALATE) && rate_limited_type(client.type_id)) {
+        rated = kx_rl_take(&K.rl, client.type_id, in->action, now, &rl);
+        if (rated == 0) {
+            r.verdict = KX_VERDICT_BLOCK;
+            r.reason = KX_R_RATE_LIMITED;
+            r.gate = KX_GATE_RATE;
+            r.rule_index = -1;
+            K.rate_limited++;
+        }
     }
 
     kx_intent_ctx_t ictx = { K.tenant_id, K.vehicle_id, "ai_agent", now_ms };
@@ -331,6 +387,10 @@ static void propose(resmgr_context_t *ctp, const kx_intent_t *in, kx_decision_t 
     rec.has_telemetry = 1; rec.telemetry = tel; rec.env = env;
     rec.escalation_id = d->escalation_id;
     rec.eval_ns = d->eval_ns;
+    if (rated >= 0) {
+        rec.has_rate = 1; rec.rate_overflow = rl.overflow;
+        rec.rate_burst = rl.burst; rec.rate_per_min = rl.per_min; rec.rate_tat_ns = rl.tat_before;
+    }
     if (d->verdict == KX_VERDICT_ALLOW) { rec.has_grant = 1; memcpy(rec.grant_id, d->grant.grant_id, 16); }
     kxl_submit(&rec, owed());
     K.proposals++;
@@ -808,6 +868,7 @@ static int io_read(resmgr_context_t *ctp, io_read_t *msg, void *ocb_v) {
     OUT("grants outstanding %u  redeemed %" PRIu64 "  expired(reaped) %" PRIu64 "\n", K.grants.outstanding, K.redeem_ok, K.reaped);
     for (int r = 0; r < 256; r++) if (K.redeem_fail[r]) OUT("  refused %-23s %" PRIu64 "\n", reason_name((uint16_t)r), K.redeem_fail[r]);
     OUT("effects confirmed %" PRIu64 "  failed %" PRIu64 "\n", K.effects_ok, K.effects_fail);
+    OUT("rate limits on %s  limited %" PRIu64 "\n", K.rl_desc, K.rate_limited);
     { char ls[320]; kxl_status(ls, sizeof ls); OUT("%s", ls); }
     OUT("escalations created %" PRIu64 "  approved %" PRIu64 "  denied %" PRIu64 "  timed-out %" PRIu64
         "  re-blocked-on-approval %" PRIu64 "\n", K.esc_created, K.esc_approved, K.esc_denied, K.esc_expired, K.esc_reblocked);
@@ -913,15 +974,17 @@ int main(int argc, char **argv) {
     snprintf(K.tenant_id, sizeof K.tenant_id, "6f1c2b9e-4d3a-4c8b-9a7e-2b1d0c3e4f5a");
     unsigned max_age_ms = 50, ring = 1024, slow_ms = 0;
     const char *datadir = "/data/kervix";
+    const char *rate_types = "agentgw_t";
     unsigned restart = 0;
     char restart_cause[16] = "";
     int opt;
-    while ((opt = getopt(argc, argv, "V:T:A:D:R:S:X:v")) != -1) {
+    while ((opt = getopt(argc, argv, "V:T:A:D:L:R:S:X:v")) != -1) {
         if (opt == 'V') snprintf(K.vehicle_id, sizeof K.vehicle_id, "%s", optarg);
         else if (opt == 'T') snprintf(K.tenant_id, sizeof K.tenant_id, "%s", optarg);
         else if (opt == 'A') max_age_ms = (unsigned)atoi(optarg);
         else if (opt == 'v') K.verbose = 1;
         else if (opt == 'D') datadir = optarg;
+        else if (opt == 'L') rate_types = optarg;
         else if (opt == 'R') ring = (unsigned)atoi(optarg);
         else if (opt == 'S') slow_ms = (unsigned)atoi(optarg);
         else if (opt == 'X') {                       /* set by kx-supervisor: <restart>:<cause> */
@@ -935,7 +998,7 @@ int main(int argc, char **argv) {
             }
             if (!restart_cause[0]) snprintf(restart_cause, sizeof restart_cause, "unknown");
         }
-        else { fprintf(stderr, "usage: kervixd [-V vehicle_id] [-T tenant_uuid] [-A max_age_ms] [-D datadir] [-R queue] [-S slow_ms] [-X restart:cause] [-v]\n"); return 2; }
+        else { fprintf(stderr, "usage: kervixd [-V vehicle_id] [-T tenant_uuid] [-A max_age_ms] [-D datadir] [-L ratelimited_type,...|none] [-R queue] [-S slow_ms] [-X restart:cause] [-v]\n"); return 2; }
     }
     setvbuf(stdout, NULL, _IOLBF, 0);
     K.max_age_ns = (uint64_t)max_age_ms * 1000000ull;
@@ -980,7 +1043,11 @@ int main(int argc, char **argv) {
         g_stage.len = 0;
     }
 
-    kxl_config_t lc = { datadir, K.vehicle_id, K.tenant_id, ring, slow_ms, K.verbose, { 0 }, restart, { 0 } };
+    kx_rl_init(&K.rl);
+    rate_config(rate_types);
+    printf("kervixd: rate limits on %s\n", K.rl_desc);
+    kxl_config_t lc = { datadir, K.vehicle_id, K.tenant_id, ring, slow_ms, K.verbose, { 0 }, restart, { 0 }, K.rl_all, K.rl_n, { 0 } };
+    memcpy(lc.rate_types, K.rl_types, sizeof lc.rate_types);
     memcpy(lc.policy_hash, K.policy.hash, 32);
     memcpy(lc.restart_cause, restart_cause, sizeof lc.restart_cause);
     if (kxl_open(&lc) != 0) { fprintf(stderr, "kervixd: ledger unavailable: refusing to start (no audit, no action)\n"); return 1; }

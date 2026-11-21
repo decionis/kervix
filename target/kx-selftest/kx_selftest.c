@@ -283,6 +283,21 @@ static void check_constitution(void) {
     result(has(out, "unknown action") || has(out, "BLOCK"), "action outside the catalog -> refused", out);
 }
 
+/* F12: the agent's principal is rate-limited per action; the operator and other actions are not */
+static void check_rate(void) {
+    char out[OUT_MAX];
+    begin("F12");
+    sh(out, sizeof out, "for i in 1 2 3 4 5 6 7 8 9 10; do %s propose light.hazard.set on=1; done", AG);
+    int limited = 0, allowed = 0;
+    for (const char *q = out; (q = strstr(q, "RATE_LIMITED")) != NULL; q++) limited++;
+    for (const char *q = out; (q = strstr(q, "ALLOW")) != NULL; q++) allowed++;
+    char what[112];
+    snprintf(what, sizeof what, "agent floods hazard lights: %d ALLOW, then BLOCK RATE_LIMITED x%d", allowed, limited);
+    result(allowed >= 1 && limited >= 2 && strstr(out, "ALLOW") < strstr(out, "RATE_LIMITED"), what, out);
+    sh(out, sizeof out, "%s propose light.hazard.set on=0; %s propose cabin.climate.set temp_dc=215", OP, AG);
+    result(!has(out, "RATE_LIMITED") && has(out, "ALLOW"), "same action by the operator, another action by the agent: not limited", out);
+}
+
 static int kervixd_pid(void) {
     char out[256];
     sh(out, sizeof out, "pidin -p kervixd -F '%%a' 2>/dev/null | tail -1");
@@ -389,6 +404,7 @@ int main(int argc, char **argv) {
     check_j3();
     check_grants();
     check_constitution();
+    check_rate();
     check_j4();
     check_j5();
     check_denials();

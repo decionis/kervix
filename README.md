@@ -3,7 +3,7 @@
 [![host CI](https://github.com/decionis/kervix/actions/workflows/host.yml/badge.svg?branch=master)](https://github.com/decionis/kervix/actions/workflows/host.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![QNX 8.0](https://img.shields.io/badge/QNX-8.0-0a7bbb.svg)](https://www.qnx.com/developers/docs/8.0/)
-[![secpol: secure image 29/29](https://img.shields.io/badge/selftest%20%28secure%20image%29-29%2F29-2ea44f.svg)](docs/evidence/selftest-qnx-qemu-secure.txt)
+[![secpol: secure image 31/31](https://img.shields.io/badge/selftest%20%28secure%20image%29-31%2F31-2ea44f.svg)](docs/evidence/selftest-qnx-qemu-secure.txt)
 [![Node ≥ 22.18](https://img.shields.io/badge/node-%E2%89%A5%2022.18-339933.svg)](package.json)
 [![Evidence: AAC draft-04](https://img.shields.io/badge/evidence-AAC%20draft--04-6f42c1.svg)](docs/03-architecture.md#82-capsules-aac-draft-04--mapping-frozen-by-spike-s5)
 [![QNX Global Hackathon 2026](https://img.shields.io/badge/QNX%20Hackathon-2026-orange.svg)](https://qnx.devpost.com)
@@ -78,8 +78,8 @@ Details: [architecture](docs/03-architecture.md) · [design](docs/02-product-des
 
 | | Result |
 |---|---|
-| Dev image (every Kervix type restricted) | **29/29 PASS** · [table](docs/evidence/selftest-qnx-qemu-open.txt) |
-| Release image (`--secpol=secure`: one complete policy, nothing runs untyped, root's shell confined) | **29/29 PASS** · [table](docs/evidence/selftest-qnx-qemu-secure.txt) |
+| Dev image (every Kervix type restricted) | **31/31 PASS** · [table](docs/evidence/selftest-qnx-qemu-open.txt) |
+| Release image (`--secpol=secure`: one complete policy, nothing runs untyped, root's shell confined) | **31/31 PASS** · [table](docs/evidence/selftest-qnx-qemu-secure.txt) |
 | The run's signed dossier, verified offline on the host | **VERIFIED**: signatures, chain across restarts, 17/17 decisions replayed |
 | Red team (`kx-rogue`, 10 attacks as the deployed agent) | **0/10 open**, all refused by the kernel |
 | Signed policy updates (author ≠ approver, verified on the vehicle, activated, persisted, replayed offline) | **15/15** · `make target-policy` |

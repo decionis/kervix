@@ -1,7 +1,8 @@
 /* Capsules + COSE envelope + base64url.
  *   test_capsule          unit tests
  *   test_capsule --emit [--lie]  one JSON line per capsule of a realistic stream
- *                         (--lie: one decision contradicts the policy, everything else valid):
+ *                         (--lie: one decision contradicts the policy, everything else valid;
+ *                          --lie-hash, --lie-twice, --lie-rate, --lie-limit: see emit()):
  *       {"capsule": <capsule>, "text": "<exact bytes>", "envelope_unsigned": "<hex, sig zeroed>",
  *        "sig_structure": "<hex>"}
  *   tests/conformance/capsule-parity.mjs checks them with @decionis/verify and
@@ -19,6 +20,8 @@
 #define NOW_MS 1795000000000LL
 
 static kx_policy_t POL;
+static kx_rl_t RL;                 /* the stream's rate limiter, reset per epoch like kervixd's */
+static int RL_ON = 1;
 /* RFC 8032 test 1 public key: Node signs with the matching seed in the conformance check */
 static const uint8_t PK[32] = { 0xd7, 0x5a, 0x98, 0x01, 0x82, 0xb1, 0x0a, 0xb7, 0xd5, 0x4b, 0xfe, 0xd3, 0xc9, 0x64, 0x07, 0x3a,
                                 0x0e, 0xe1, 0x72, 0xf3, 0xda, 0xa6, 0x23, 0x25, 0xaf, 0x02, 0x1a, 0x68, 0xf7, 0x07, 0x51, 0x1a };
@@ -85,12 +88,20 @@ static kx_capsule_rec_t decision(const kx_intent_t *in, const kx_telemetry_t *te
     if (kx_validate_intent(in) == KX_R_OK) kx_intent_hash(in, &ICTX, r.intent_hash);
     memcpy(r.policy_hash, POL.hash, 32);
     r.eval_ns = 2410; r.client_pid = 4242; r.client_type = 7;
+    kx_rl_result_t rl;            /* F12, as kervixd applies it: after the policy, only on ALLOW/ESCALATE */
+    if (RL_ON && (r.verdict == KX_VERDICT_ALLOW || r.verdict == KX_VERDICT_ESCALATE) && kx_rl_take(&RL, r.client_type, in->action, NOW_NS, &rl) >= 0) {
+        r.has_rate = 1; r.rate_burst = rl.burst; r.rate_per_min = rl.per_min; r.rate_tat_ns = rl.tat_before;
+        if (rl.limited) {
+            r.verdict = KX_VERDICT_BLOCK; r.gate = KX_GATE_RATE; r.reason = KX_R_RATE_LIMITED; r.rule_index = -1;
+            memset(r.rule_id, 0, sizeof r.rule_id);
+        }
+    }
     if (r.verdict == KX_VERDICT_ALLOW) { r.has_grant = 1; memset(r.grant_id, 0xa5, 16); r.grant_id[15] = in->intent_id[15]; }
     return r;
 }
 
 typedef struct { kx_capsule_rec_t rec; kx_relation_t rel; int parent; int ref; } step_t;
-#define MAX_STEPS 24
+#define MAX_STEPS 32
 static step_t S[MAX_STEPS];
 static int NS;
 static uint8_t IDS[MAX_STEPS][32];
@@ -103,6 +114,16 @@ static void push(kx_capsule_rec_t r, kx_relation_t rel, int parent, int ref) {
     S[NS++] = (step_t){ r, rel, parent, ref };
 }
 
+/* an EPOCH record: the limiter starts fresh and the epoch states whom it limits */
+static kx_capsule_rec_t epoch_rec(void) {
+    kx_capsule_rec_t e;
+    memset(&e, 0, sizeof e);
+    e.event = KX_EV_EPOCH; e.reason = KX_R_AUTHORITY_EPOCH;
+    e.has_rate_config = 1; e.n_rate_types = 1; e.rate_types[0] = 7;
+    kx_rl_init(&RL);
+    return e;
+}
+
 static void build_stream(void) {
     NS = 0;
     kx_capsule_rec_t e;
@@ -112,7 +133,7 @@ static void build_stream(void) {
     kx_intent_t clim = intent(KX_ACT_CABIN_CLIMATE_SET, 3); addp(&clim, KX_P_TEMP_DC, 225);
     kx_intent_t loc = intent(KX_ACT_TELEMATICS_LOCATION_SHARE, 4); addp(&loc, KX_P_RECIPIENT, KX_RECIPIENT_FLEET_OPERATOR); addp(&loc, KX_P_DURATION_S, 3600);
 
-    memset(&e, 0, sizeof e); e.event = KX_EV_EPOCH; e.reason = KX_R_AUTHORITY_EPOCH;
+    e = epoch_rec();
     push(e, KX_REL_NONE, -1, -1);                                                     /* 0 epoch (genesis) */
     push(decision(&door, &p, 1), KX_REL_FOLLOWS, 0, -1);                              /* 1 ALLOW */
     e = S[1].rec; e.event = KX_EV_EFFECT; e.effect_ok = 1; e.has_telemetry = 0;
@@ -154,7 +175,7 @@ static void build_stream(void) {
     push(e, KX_REL_FOLLOWS, 16, 6);                                                   /* 17 actuator failed */
     kx_intent_t bad = intent(KX_ACT_CABIN_CLIMATE_SET, 5); addp(&bad, KX_P_TEMP_DC, 999);
     push(decision(&bad, &p, 1), KX_REL_FOLLOWS, 17, -1);                              /* 18 BLOCK K4 (recorded as received) */
-    memset(&e, 0, sizeof e); e.event = KX_EV_EPOCH; e.reason = KX_R_AUTHORITY_EPOCH; e.quarantined_bytes = 117; e.restart = 2; memcpy(e.restart_cause, "SIGKILL", 8);
+    e = epoch_rec(); e.quarantined_bytes = 117; e.restart = 2; memcpy(e.restart_cause, "SIGKILL", 8);
     push(e, KX_REL_EPOCH_OPENS, 18, -1);                                              /* 19 restart epoch */
     /* escalation ids restart at 1 per epoch: #7 again, legitimately, after the restart */
     kx_intent_t loc3 = intent(KX_ACT_TELEMATICS_LOCATION_SHARE, 8); addp(&loc3, KX_P_RECIPIENT, KX_RECIPIENT_EMERGENCY_CONTACT); addp(&loc3, KX_P_DURATION_S, 900);
@@ -163,10 +184,19 @@ static void build_stream(void) {
     e = S[20].rec; e.event = KX_EV_ESC_RESOLVED; e.verdict = KX_VERDICT_BLOCK; e.reason = KX_R_HUMAN_DENIED;
     e.human = 1; strcpy(e.approver, "hmi:driver-seat");
     push(e, KX_REL_FOLLOWS, 20, -1);                                                  /* 21 denied */
+    /* F12: location sharing is limited to a burst of 3 per principal; #20 was the first this epoch */
+    kx_intent_t loc4 = intent(KX_ACT_TELEMATICS_LOCATION_SHARE, 9); addp(&loc4, KX_P_RECIPIENT, KX_RECIPIENT_FLEET_OPERATOR); addp(&loc4, KX_P_DURATION_S, 600);
+    kx_intent_t loc5 = intent(KX_ACT_TELEMATICS_LOCATION_SHARE, 10); addp(&loc5, KX_P_RECIPIENT, KX_RECIPIENT_FLEET_OPERATOR); addp(&loc5, KX_P_DURATION_S, 900);
+    kx_intent_t loc6 = intent(KX_ACT_TELEMATICS_LOCATION_SHARE, 11); addp(&loc6, KX_P_RECIPIENT, KX_RECIPIENT_FLEET_OPERATOR); addp(&loc6, KX_P_DURATION_S, 1200);
+    push(decision(&loc4, &p, 1), KX_REL_FOLLOWS, 21, -1);                            /* 22 ESCALATE (2nd) */
+    S[22].rec.escalation_id = 8;
+    push(decision(&loc5, &p, 1), KX_REL_FOLLOWS, 22, -1);                            /* 23 ESCALATE (3rd) */
+    S[23].rec.escalation_id = 9;
+    push(decision(&loc6, &p, 1), KX_REL_FOLLOWS, 23, -1);                            /* 24 BLOCK RATE_LIMITED (4th) */
     memset(&e, 0, sizeof e); e.event = KX_EV_POLICY; e.reason = KX_R_POLICY_ACTIVATED; e.human = 1;
     memcpy(e.prev_policy_hash, POL.hash, 32); memset(e.policy_hash, 0xb2, 32);
     strcpy(e.approver, "author:policy-team approver:safety-board");
-    push(e, KX_REL_FOLLOWS, 21, -1);                                                  /* 22 signed policy activated */
+    push(e, KX_REL_FOLLOWS, 24, -1);                                                  /* 25 signed policy activated */
 }
 
 static kx_capsule_ctx_t ctx(void) {
@@ -199,6 +229,20 @@ static int emit(int lie) {
     }
     if (lie == 3) {           /* escalation #9 resolved a second time in the same epoch */
         S[16].rec.escalation_id = 9;
+    }
+    if (lie == 4) {           /* the limiter was skipped: #24 escalated although its bucket was empty */
+        kx_capsule_rec_t limited = S[24].rec;
+        RL_ON = 0;
+        S[24].rec = decision(&limited.intent, &limited.telemetry, 1);
+        RL_ON = 1;
+        S[24].rec.has_rate = 1; S[24].rec.rate_burst = limited.rate_burst; S[24].rec.rate_per_min = limited.rate_per_min;
+        S[24].rec.rate_tat_ns = limited.rate_tat_ns;
+        S[24].rec.escalation_id = 10;
+        S[24].rec.ledger_seq = limited.ledger_seq; S[24].rec.timestamp_ms = limited.timestamp_ms;
+    }
+    if (lie == 5) {           /* the authority refused #23 as RATE_LIMITED although its bucket had room */
+        S[23].rec.verdict = KX_VERDICT_BLOCK; S[23].rec.gate = KX_GATE_RATE; S[23].rec.reason = KX_R_RATE_LIMITED;
+        S[23].rec.rule_index = -1; memset(S[23].rec.rule_id, 0, sizeof S[23].rec.rule_id); S[23].rec.escalation_id = 0;
     }
     if (lie == 1) {
         S[3].rec.verdict = KX_VERDICT_ALLOW;
@@ -290,10 +334,10 @@ static void test_capsules(void) {
     KX_CHECK(strstr(JSON[12], "\"verdict_class\":\"denied\"") && strstr(JSON[14], "\"verdict_class\":\"expired\""));
     KX_CHECK(strstr(JSON[0], "\"ledger_mode\":\"standalone\"") && strstr(JSON[0], "\"chain\"") == NULL);
     /* policy activation: fyi, approved by humans (author + approver), authority = the NEW policy */
-    KX_CHECK(strstr(JSON[22], "\"action_id\":\"policy:b2b2b2b2b2b2b2b2\"") && strstr(JSON[22], "\"action_type\":\"fyi\""));
-    KX_CHECK(strstr(JSON[22], "\"approver\":\"human\"") && strstr(JSON[22], "\"verdict_class\":\"resolved\"") && strstr(JSON[22], "\"human_disposed\":true"));
-    KX_CHECK(strstr(JSON[22], "\"authority\":\"sha256:b2b2") && strstr(JSON[22], "\"previous_policy_hash\":\"sha256:8539d711"));
-    KX_CHECK(strstr(JSON[22], "\"event\":\"policy_activated\"") && strstr(JSON[22], "\"reason\":\"POLICY_ACTIVATED\""));
+    KX_CHECK(strstr(JSON[25], "\"action_id\":\"policy:b2b2b2b2b2b2b2b2\"") && strstr(JSON[25], "\"action_type\":\"fyi\""));
+    KX_CHECK(strstr(JSON[25], "\"approver\":\"human\"") && strstr(JSON[25], "\"verdict_class\":\"resolved\"") && strstr(JSON[25], "\"human_disposed\":true"));
+    KX_CHECK(strstr(JSON[25], "\"authority\":\"sha256:b2b2") && strstr(JSON[25], "\"previous_policy_hash\":\"sha256:8539d711"));
+    KX_CHECK(strstr(JSON[25], "\"event\":\"policy_activated\"") && strstr(JSON[25], "\"reason\":\"POLICY_ACTIVATED\""));
 
     /* REPLAY: every recorded decision reproduces bit-for-bit from its evidence */
     int decisions = 0;
@@ -302,9 +346,18 @@ static void test_capsules(void) {
         decisions++;
         kx_eval_result_t r;
         kx_capsule_replay(&POL, &S[i].rec, &r);
-        KX_CHECK(r.verdict == S[i].rec.verdict && r.reason == S[i].rec.reason && r.rule_index == S[i].rec.rule_index);
+        if (S[i].rec.gate == KX_GATE_RATE)   /* applied after the policy: the policy itself said ALLOW/ESCALATE */
+            KX_CHECK(r.verdict == KX_VERDICT_ESCALATE && S[i].rec.reason == KX_R_RATE_LIMITED && S[i].rec.has_rate);
+        else
+            KX_CHECK(r.verdict == S[i].rec.verdict && r.reason == S[i].rec.reason && r.rule_index == S[i].rec.rule_index);
     }
-    KX_CHECK(decisions == 10);  /* steps 1,3,4,6,7,11,13,15,18,20 */
+    KX_CHECK(decisions == 13);  /* steps 1,3,4,6,7,11,13,15,18,20,22,23,24 */
+    /* F12 evidence: the epoch names whom it limits; the limited decision records the bucket it was refused on */
+    KX_CHECK(strstr(JSON[0], "\"rate\":{\"all_types\":0,\"types\":[7]}") != NULL);
+    KX_CHECK(strstr(JSON[24], "\"gate\":\"rate_limit\"") && strstr(JSON[24], "\"reason\":\"RATE_LIMITED\"") && strstr(JSON[24], "\"verdict\":\"BLOCK\""));
+    KX_CHECK(strstr(JSON[24], "\"rate\":{\"burst\":3,\"per_min\":6,\"tat_ns\":39000000000}") != NULL);
+    KX_CHECK(strstr(JSON[24], "\"id\":\"com.kervix.constitution.rate_limit\"") != NULL);
+    KX_CHECK(strstr(JSON[3], "\"rate\":") == NULL);    /* blocked by the policy: the limiter is not consulted */
 
     /* invalid records never produce a capsule */
     char out[KX_CAPSULE_JCS_MAX];
@@ -321,7 +374,8 @@ int main(int argc, char **argv) {
     if (kx_policy_build_default(&POL) != 0) return 1;
     if (argc > 1 && strcmp(argv[1], "--emit") == 0)
         return emit(argc > 2 && strcmp(argv[2], "--lie") == 0 ? 1 : argc > 2 && strcmp(argv[2], "--lie-hash") == 0 ? 2
-                    : argc > 2 && strcmp(argv[2], "--lie-twice") == 0 ? 3 : 0);
+                    : argc > 2 && strcmp(argv[2], "--lie-twice") == 0 ? 3 : argc > 2 && strcmp(argv[2], "--lie-rate") == 0 ? 4
+                    : argc > 2 && strcmp(argv[2], "--lie-limit") == 0 ? 5 : 0);
     test_cose_and_b64();
     test_capsules();
     KX_TEST_DONE();

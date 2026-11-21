@@ -79,9 +79,16 @@ const actions = (cat.actions ?? []).map((a) => {
   });
   if (params.length > MAX_PARAMS) fail(`action ${a.name}: more than ${MAX_PARAMS} params`);
   if (params.filter((p) => p.type === "digest").length > 1) fail(`action ${a.name}: at most one digest param`);
+  let rate = null;
+  if (a.rate !== undefined) {
+    const { burst, per_min: perMin, ...rest } = a.rate ?? {};
+    if (!Number.isInteger(burst) || burst < 1 || burst > 1000 || !Number.isInteger(perMin) || perMin < 1 || perMin > 60000 || Object.keys(rest).length)
+      fail(`action ${a.name}: rate must be { burst: 1..1000, per_min: 1..60000 }`);
+    rate = { burst, per_min: perMin };
+  }
   return {
     id: a.id, name: a.name, summary: a.summary ?? "", irreversibility: a.irreversibility,
-    safety: a.safety, privacy: !!a.privacy, params,
+    safety: a.safety, privacy: !!a.privacy, rate, params,
   };
 });
 const dupe = (arr, key, what) => {
@@ -135,6 +142,8 @@ typedef struct {
     uint8_t         safety;          /* kx_safety_t */
     uint8_t         privacy;
     uint8_t         n_params;
+    uint16_t        rate_burst;      /* F12 token bucket; 0 = no limit */
+    uint16_t        rate_per_min;
     kx_param_spec_t params[KX_CATALOG_MAX_PARAMS];
 } kx_action_spec_t;
 
@@ -176,7 +185,7 @@ c += `const kx_action_spec_t kx_catalog_actions[KX_ACTION_COUNT] = {\n`;
 for (const a of actions) {
   const ps = a.params.map((p) =>
     `{ KX_P_${C(p.name)}, KX_PT_${C(p.type)}, ${p.min}LL, ${p.max}LL, ${cstr(p.name)}, ${p.enumName ? `kx_enum_${p.enumName}` : "NULL"} }`);
-  c += `    { ${a.id}, ${cstr(a.name)}, KX_IRR_${C(a.irreversibility)}, KX_SAFETY_${C(a.safety)}, ${a.privacy ? 1 : 0}, ${a.params.length},\n      { ${ps.join(",\n        ") || "{ 0 }"} } },\n`;
+  c += `    { ${a.id}, ${cstr(a.name)}, KX_IRR_${C(a.irreversibility)}, KX_SAFETY_${C(a.safety)}, ${a.privacy ? 1 : 0}, ${a.params.length}, ${a.rate ? a.rate.burst : 0}, ${a.rate ? a.rate.per_min : 0},\n      { ${ps.join(",\n        ") || "{ 0 }"} } },\n`;
 }
 c += `};\n\n`;
 c += `const kx_tfield_spec_t kx_catalog_tfields[KX_TF__COUNT] = {\n${tfields.map((f) => `    { ${cstr(f.name)}, ${f.vss ? cstr(f.vss) : "NULL"}, ${f.min}, ${f.max} },`).join("\n")}\n};\n\n`;
@@ -235,7 +244,7 @@ const tools = actions.map((a) => {
   }
   return {
     name: toolName(a.name),
-    description: `${a.summary} Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: ${a.irreversibility}.`,
+    description: `${a.summary} Every call is a PROPOSAL evaluated by the vehicle's execution authority (Kervix), which may ALLOW, ESCALATE to the driver, or BLOCK it with a reason. Irreversibility: ${a.irreversibility}.${a.rate ? ` Rate limit: ${a.rate.burst} back to back, then ${a.rate.per_min} per minute; more are BLOCKed with RATE_LIMITED.` : ""}`,
     strict: true,
     input_schema: { type: "object", properties, required: a.params.map((p) => p.name), additionalProperties: false },
   };

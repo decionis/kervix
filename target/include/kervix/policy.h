@@ -103,8 +103,10 @@ typedef enum {
     KX_GATE_K1_STALE,
     KX_GATE_K2_IMPLAUSIBLE,
     KX_GATE_K3_LEDGER,
-    KX_GATE_REQUIRE         /* ESCALATE rule whose `require` failed */
+    KX_GATE_REQUIRE,        /* ESCALATE rule whose `require` failed */
+    KX_GATE_RATE            /* F12: applied by kervixd after kx_eval (kervix/ratelimit.h) */
 } kx_gate_t;
+#define KX_GATE__MAX KX_GATE_RATE
 
 typedef struct {
     uint8_t  verdict;        /* kx_verdict_t */

@@ -369,6 +369,10 @@ int kxl_open(const kxl_config_t *cfg) {
     e.quarantined_bytes = L.quarantined;
     e.restart = cfg->restart;
     memcpy(e.restart_cause, cfg->restart_cause, sizeof e.restart_cause);
+    e.has_rate_config = 1;
+    e.rate_all_types = cfg->rate_all_types;
+    e.n_rate_types = cfg->n_rate_types;
+    memcpy(e.rate_types, cfg->rate_types, sizeof e.rate_types);
     e.client_pid = getpid();
     kxl_submit(&e, 0);
 

@@ -208,8 +208,9 @@ PROPOSE ─▶ 1 validate struct (abi, action ∈ catalog, n_params, ranges)    
         ─▶ 2 intent_hash = SHA-256(JCS(Agent-Safe Intent v1 binding))       P1
         ─▶ 3 telemetry snapshot (seqlock read, retry ≤ 3)                    V1
         ─▶ 4 constitution K1..K3 (freshness, plausibility, ledger health)
-        ─▶ 5 rate limiter (token bucket per actor×action)                    F12
-        ─▶ 6 policy eval: rules[action] first-match, ≤8 predicates each       F3
+        ─▶ 5 policy eval: rules[action] first-match, ≤8 predicates each       F3
+        ─▶ 6 rate limit, only where 5 said ALLOW/ESCALATE: GCRA token bucket   F12
+             per (caller's secpol type, action); over the limit → BLOCK RATE_LIMITED
         ─▶ 7 verdict: ALLOW → grant (CSPRNG id, HMAC) + insert grant table
                       ESCALATE → escalation slot + ionotify HMI + timer
                       BLOCK → reason
@@ -218,6 +219,12 @@ PROPOSE ─▶ 1 validate struct (abi, action ∈ catalog, n_params, ranges)    
 ```
 
 Bounds: catalog ≤ 64 actions; ≤ 256 rules total; ≤ 8 predicates per rule; grant table 1024 slots (open addressing, keyed by grant_id, expired entries reaped lazily and by a 10 ms timer pulse; tombstones reused under pressure once their effect grace has passed); escalation slots 32; capsule ring 4096 records.
+
+**Rate limits (F12), implemented.** Limits are per action in the catalog (`rate: { burst, per_min }`), so they are part of the vehicle's constitution: a signed policy cannot loosen them, and the built-in policy's hash (and every recorded dossier) is unchanged.
+- **Principal = the kernel-stamped secpol type** of the caller (`ctp->info.type_id`), never the agent's self-declared `actor_id`, which an agent could rotate. kervixd limits the types named with `-L` (default `agentgw_t`); a name that does not resolve in the policy makes it limit **every** type (fail closed). The workshop `operator_t` is not limited, so `kx-bench` still measures the decision path.
+- **Only where the policy would act:** after K3, on ALLOW and ESCALATE. This bounds actuator churn and approval spam to the driver; floods of proposals that are blocked anyway cost little and run on the low-priority agent channel.
+- **GCRA in integer nanoseconds** (`kervix/ratelimit.h`, pure): T = 60 s / per_min, tau = (burst − 1)·T; conforms iff tat ≤ now + tau, then tat = max(tat, now) + T. Buckets live in memory and start empty each epoch.
+- **Evidence and replay:** the epoch capsule lists the limited types (`rate: {all_types, types}`); every decision the limiter saw records its bucket (`rate: {burst, per_min, tat_ns}`; the constraint id is `com.kervix.constitution.rate_limit` when it blocked). `kervix-verify` re-runs `kx_rl_step` (the same C, in WASM) on each, checks the limits against the catalog, and requires consecutive decisions on one bucket to chain. A signed decision that skipped the limiter passes policy replay and fails the rate check (`tests/conformance/liar-dossier.mjs`).
 
 **Policy evaluation is pure:** `kx_verdict_t kx_eval(const kx_policy*, const kx_intent*, const kx_telemetry*, kx_mono_ns now)`. There is no I/O, no clock read inside and no allocation. This is what makes deterministic replay possible (§9).
 
@@ -549,11 +556,12 @@ Measurement:
   - **J1–J3:** ALLOW in traffic; BLOCK at speed; window ESCALATE; approve, deny and timeout.
   - **Grants:** replay, forge, expiry, params, binding, interlock.
   - **Constitution:** K1 stale, K2 spoofed, outside the catalog.
+  - **F12:** the agent floods one action into `RATE_LIMITED`; the operator and the agent's other actions are not limited.
   - **J4:** `kx-rogue` and the raw path.
   - **J5:** `kill -9` and supervised restart.
   - **System-wide:** zero secpol refusals for legitimate roles.
   - **J6:** the signed dossier is exported, and the host verifies it offline.
-- **Results on QNX 8.0 / QEMU (TCG):** **29/29 PASS** on both the dev image (`make target-selftest`) and the **`--secpol=secure` release image** (`make target-selftest-secure`), in ~65 s. Both dossiers were VERIFIED offline (17/17 decisions replayed). Tables: `docs/evidence/selftest-qnx-qemu-{open,secure}.txt`. RPi4 is pending hardware.
+- **Results on QNX 8.0 / QEMU (TCG):** **31/31 PASS** on both the dev image (`make target-selftest`) and the **`--secpol=secure` release image** (`make target-selftest-secure`), in ~65 s. Both dossiers were VERIFIED offline (17/17 decisions replayed). Tables: `docs/evidence/selftest-qnx-qemu-{open,secure}.txt`. RPi4 is pending hardware.
 - On an image without a policy, the kernel-enforcement checks report SKIP rather than PASS.
 
 ## 12. Threat model (STRIDE summary)

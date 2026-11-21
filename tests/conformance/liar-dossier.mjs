@@ -51,8 +51,8 @@ const run = (dir) => {
 
 let failures = 0;
 const honest = run(dossier(false));
-const okHonest = honest.verified && honest.replay.mismatch === 0 && honest.replay.match > 0;
-console.log(`${okHonest ? "PASS" : "FAIL"}  truthful signed dossier verifies; replay ${honest.replay.match}/${honest.replay.match + honest.replay.mismatch}`);
+const okHonest = honest.verified && honest.replay.mismatch === 0 && honest.replay.match > 0 && honest.rate.checked >= 4 && honest.rate.limited === 1;
+console.log(`${okHonest ? "PASS" : "FAIL"}  truthful signed dossier verifies; replay ${honest.replay.match}/${honest.replay.match + honest.replay.mismatch}; rate limits ${honest.rate.checked} checked, ${honest.rate.limited} limited`);
 if (!okHonest) { failures++; console.log(JSON.stringify(honest.findings)); }
 
 const liar = run(dossier("--lie"));
@@ -74,6 +74,21 @@ const tc = [...new Set(twice.findings.map((f) => f.check))];
 const okTwice = !twice.verified && tc.length === 1 && tc[0] === "semantics" && twice.findings.some((f) => f.message.includes("resolved twice"));
 console.log(`${okTwice ? "PASS" : "FAIL"}  an escalation resolved twice in one epoch is rejected; ids reused across a restart are not`);
 if (!okTwice) { failures++; console.log(JSON.stringify(twice.findings)); }
+
+// F12: a compromised authority skips the rate limiter and lets a 4th location-sharing request
+// through to the driver. The policy alone says ESCALATE, so replay passes; the rate check does not.
+const rateLie = run(dossier("--lie-rate"));
+const rc = [...new Set(rateLie.findings.map((f) => f.check))];
+const okRate = !rateLie.verified && rc.length === 1 && rc[0] === "rate" && rateLie.findings.some((f) => f.message.includes("exceeded its rate limit"));
+console.log(`${okRate ? "PASS" : "FAIL"}  signed decision that skipped the rate limiter: replay passes, the rate check rejects it`);
+for (const f of rateLie.findings) console.log(`      ${f.check} ${f.where}: ${f.message}`);
+if (!okRate) failures++;
+// ...and the reverse: a decision refused as RATE_LIMITED although its bucket had room
+const limitLie = run(dossier("--lie-limit"));
+const lc = [...new Set(limitLie.findings.map((f) => f.check))];
+const okLimit = !limitLie.verified && lc.length === 1 && lc[0] === "rate" && limitLie.findings.every((f) => f.message.includes("although within its rate limit"));
+console.log(`${okLimit ? "PASS" : "FAIL"}  decision refused as RATE_LIMITED although within its limit: the rate check rejects it`);
+if (!okLimit) { failures++; console.log(JSON.stringify(limitLie.findings)); }
 
 // a signed policy activation whose bundle is not in the dossier cannot be checked: it fails (policy), nothing else does
 const missing = run(dossier(null, true));
