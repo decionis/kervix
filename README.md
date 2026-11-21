@@ -60,6 +60,8 @@ If the authority itself dies, nothing moves: [AUTHORITY OFFLINE · ACTUATION LOC
 
 Policies are YAML compiled by `kxpolicy` (`npm run kxpolicy`), tested on the vehicle's own C core (`npm run policy:test`), signed by an author and a different approver, and activated only through the operator's channel.
 
+**Codelab:** [*Lock it down: kernel-enforced least privilege for a QNX 8.0 resource manager*](codelab/README.md) teaches the core mechanism in about 45 minutes, on a 120-line example. It is verified on QNX 8.0 by `make codelab`.
+
 Details: [architecture](docs/03-architecture.md) · [design](docs/02-product-design.md) · [decisions](docs/decisions.md) · [QNX lessons learned](codelab/NOTES.md).
 
 ## Verified on QNX 8.0

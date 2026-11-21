@@ -1,0 +1,22 @@
+# Codelab: the car-lock security policy (QNX 8.0 secpol).
+# Topology before code: the kernel refuses every connection this file does not list.
+
+type carlockd_t;          # the daemon, while it sets up
+type carlockd_run_t;      # the daemon, after it dropped its privileges
+type app_t;               # an infotainment app: may read the lock state
+type keyfob_t;            # the key-fob receiver: may lock and unlock
+
+type carlock_status_ch_t;   # the channel behind /dev/carlock/status
+type carlock_command_ch_t;  # the channel behind /dev/carlock/command
+
+# Who may attach which path, and the type the resulting CHANNEL gets.
+allow_attach carlockd_t /dev/carlock/status  carlock_status_ch_t;
+allow_attach carlockd_t /dev/carlock/command carlock_command_ch_t;
+
+# Who may connect to which channel. Nothing else is allowed.
+allow { app_t keyfob_t } carlock_status_ch_t:channel connect;
+allow keyfob_t           carlock_command_ch_t:channel connect;
+
+# One-way privilege drop: carlockd_t may become carlockd_run_t (and nothing else).
+derive_type carlockd_t run carlockd_run_t;
+allow carlockd_t self:ability { settypeid:carlockd_run_t };

@@ -1,6 +1,6 @@
 # Kervix top-level shortcuts. Host targets run natively. QNX targets run in
 # the qnx-build container (docker/qnx-build.sh), which works on macOS and Linux.
-.PHONY: help host asan wasm test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 target-escalation target-ledger target-secpol target-secpol-secure secpol-harvest target-supervisor target-kxgw target-bridge target-agent target-selftest target-selftest-secure target-bench target-policy fuzz-wire tsan clean
+.PHONY: help host asan wasm test codegen codegen-check spikes target qnx-shell qemu-image qemu-start qemu-stop qemu-ssh target-test target-vsim target-m1 target-escalation target-ledger target-secpol target-secpol-secure secpol-harvest target-supervisor target-kxgw target-bridge target-agent target-selftest target-selftest-secure target-bench target-policy codelab fuzz-wire tsan clean
 
 ARCHES ?= x86_64 aarch64le
 KX_CORE_TESTS = libkxcore/tests/test_catalog libkxcore/tests/test_policy libkxcore/tests/test_sha256 \
@@ -33,6 +33,7 @@ help:
 	@echo "make target-selftest-secure  the same on the --secpol=secure release image"
 	@echo "make target-bench    kx-bench: latency + HMI under an agent flood (headline numbers: RPi4 only)"
 	@echo "make target-policy   signed policy bundles: refuse / activate / persist / replay on QNX"
+	@echo "make codelab         run the secpol codelab end to end on QNX (codelab/README.md)"
 	@echo "make qemu-stop       stop the VM"
 
 node_modules: package.json package-lock.json
@@ -157,6 +158,10 @@ target-bench:
 # signed policy bundles: author + approver, verified on the vehicle, activated, persisted, replayed
 target-policy: node_modules
 	tests/target/policy.sh
+
+# the codelab (codelab/README.md), every step on QNX 8.0 in QEMU, checked
+codelab:
+	codelab/run.sh
 
 # release image: --secpol=secure, kervix + monitor + harvested system policy
 target-secpol-secure:

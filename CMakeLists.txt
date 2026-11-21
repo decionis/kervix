@@ -31,6 +31,7 @@ if(KX_QNX)
   add_subdirectory(spikes/s1-secpol)
   add_subdirectory(spikes/s3-qcrypto)
   add_subdirectory(spikes/s4-boot)
+  add_subdirectory(codelab/carlock)
   # On-target components are added as they are implemented (M1+):
   add_subdirectory(target/vsimd)
   add_subdirectory(target/kervixd)
