@@ -46,7 +46,7 @@ function useXRSupport(): { vr: boolean; ar: boolean } {
   return s;
 }
 
-const BODY = "#5a6f8f";
+const BODY = "#438fe0";
 const GLASS = "#16283a";
 const STATUS_GOOD = "#0ca30c";
 const STATUS_CRITICAL = "#d03b3b";
@@ -168,7 +168,7 @@ function Vehicle({ tel }: { tel: Tel | null }) {
 
       {/* body + cabin */}
       <RoundedBox args={[4.4, 0.62, 1.86]} radius={0.18} position={[0, 0.66, 0]} castShadow>
-        <meshStandardMaterial ref={body} color={BODY} emissive={BLUE} emissiveIntensity={0} metalness={0.5} roughness={0.4} />
+        <meshStandardMaterial ref={body} color={BODY} emissive={BLUE} emissiveIntensity={0} metalness={0.3} roughness={0.3} />
       </RoundedBox>
       <RoundedBox args={[2.3, 0.56, 1.66]} radius={0.22} position={[-0.25, 1.22, 0]} castShadow>
         <meshStandardMaterial color={GLASS} transparent opacity={0.55} metalness={0.3} roughness={0.1} />
@@ -266,17 +266,18 @@ export function CarTwin({ tel, offline, verdict = null, pending = 0 }: Props) {
   const { vr, ar } = useXRSupport();
   return (
     <>
-      <Canvas shadows camera={{ position: [5.2, 3.0, 5.6], fov: 38 }} style={{ filter: offline ? "grayscale(0.85) brightness(0.6)" : undefined }}>
+      <Canvas shadows dpr={[1, 2]} gl={{ antialias: true, precision: "highp" }} camera={{ position: [5.2, 3.0, 5.6], fov: 38 }} style={{ filter: offline ? "grayscale(0.85) brightness(0.6)" : undefined }}>
         <XR store={xrStore}>
           <IfInSessionMode deny="immersive-ar">
-            <color attach="background" args={["#1a1a19"]} />
+            <color attach="background" args={["#121b27"]} />
           </IfInSessionMode>
-          <hemisphereLight args={["#dfe7f2", "#1a1a19", 1.1]} />
-          <directionalLight position={[6, 9, 4]} intensity={2.4} castShadow shadow-mapSize={[1024, 1024]} />
-          <directionalLight position={[-6, 4, -5]} intensity={0.8} />
+          <hemisphereLight args={["#edf5ff", "#23364c", 1.4]} />
+          <directionalLight position={[6, 9, 4]} intensity={2.6} castShadow shadow-mapSize={[2048, 2048]} />
+          <directionalLight position={[-6, 4, -5]} intensity={1.2} />
           <Vehicle tel={tel} />
-          <ContactShadows position={[0, 0.01, 0]} opacity={0.5} scale={12} blur={2.4} far={3} />
           <IfInSessionMode deny={["immersive-vr", "immersive-ar"]}>
+            {/* The offscreen contact-shadow pass must not render through an XR camera. */}
+            <ContactShadows position={[0, 0.01, 0]} opacity={0.35} scale={12} blur={1.2} far={3} resolution={512} />
             <OrbitControls enablePan={false} minDistance={5} maxDistance={14} maxPolarAngle={Math.PI / 2.1} target={[0, 0.7, 0]} />
           </IfInSessionMode>
           <IfInSessionMode>

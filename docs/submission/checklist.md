@@ -14,7 +14,7 @@
 | Technology requirement explained: each QNX product, what it does, where to look | ✅ | [`additional-details.md`](additional-details.md) § How the project meets the technology requirement (paste into the Devpost field). |
 | Category | ✅ | Automotive & Mobility (select it in the Devpost form). |
 | Text description | ✅ | [`devpost.md`](devpost.md), paste-ready. Refresh the numbers after the RPi4 run. |
-| Demo video < 3:00, public on YouTube, showing it running **on the device** | 🟡 👤 | Shot list: [`video-shot-list.md`](video-shot-list.md). Record from Dec 3 (RPi4); edit to ≤ 2:59 by Dec 12; upload **public**. |
+| Demo video < 3:00, public on YouTube, showing it running **on the device** | 🟡 👤 | The **2:50 QEMU edition** is recorded with male narration and burned-in captions: [`recording-2026-11-21.md`](recording-2026-11-21.md). RPi4 footage/latency remains scheduled for Dec 3; public YouTube upload remains pending. |
 | Built during the hackathon | ✅ | Repository history starts Nov 20, 2026; disclosure in `devpost.md`. |
 | Pre-existing code disclosed | ✅ | `@decionis/verify` (pre-existing, Apache-2.0), disclosed in `devpost.md`, `README.md` and `THIRD_PARTY.md`. |
 
@@ -27,9 +27,9 @@
 
 ## Going public
 
-1. 👤 **Rotate the Azure Claude key** that was pushed to closed PR #34 on Nov 21, and update your local `secrets.platforms.env`.
-2. 👤 Optionally ask **GitHub Support** to purge PR #34's refs. With the key rotated, what remains there is a dead credential.
-3. ✅ The secrets file is git-ignored on `master` (`.gitignore`). No branch or tag contains it: a history scan of all refs finds 0 occurrences.
+1. ✅ **Azure Claude key rotated:** confirmed by the owner on Nov 21. The local credentials file was not read or changed for this cleanup.
+2. 🟡 **GitHub Support removal ticket created** for PR #34's retained ref and cached sensitive file. The source branch is deleted; GitHub controls its read-only `refs/pull/*` refs. The support bot confirmed ticket creation, not completed removal.
+3. ✅ The secrets file is git-ignored on `master` (`.gitignore`). The refreshed local branch/tag history contains no `secrets.platforms.env`; the server's retained PR ref is the remaining cleanup target.
 4. ✅ Repo description and 16 topics set (`qnx`, `qnx8`, `secpol`, `software-defined-vehicle`, `ai-safety`, …); README badges (CI, licence, QNX 8.0, secure-image selftest, Node, AAC, hackathon).
 5. ✅ Visibility is **public**; About shows *Apache-2.0*.
 
@@ -37,12 +37,12 @@
 
 | When | Item | Owner |
 |---|---|---|
-| when ready | Publish the next `@decionis/verify` release containing decionis/Decionis#1752. **0.6.0 does not include it**: it was published 4 minutes before #1752 merged. Then pin it in Kervix (`host/verify`, `tests/conformance`, `spikes/s5-aac`); the `follows` / `vehicle.*` info findings disappear. | 👤 publish · Claude pins |
+| ✅ Nov 21 | Published **`@decionis/verify` 0.6.1** with Decionis#1752, pinned exactly in `host/verify`, `tests/conformance`, and `spikes/s5-aac`. Conformance passes; the recorded seven-capsule dossier verifies with zero findings. [Publish run](https://github.com/decionis/Decionis/actions/runs/44865404373). **0.6.0 predates #1752.** | Done |
 | Dec 3 | **RPi4 bring-up:** QNX 8.0 image, `deploy-rpi`, `make target-selftest` + `kx-bench` on the board; replace the QEMU numbers in README / Devpost / architecture. **Gate:** if the board is not up on Dec 3, the QEMU-only plan applies (no absolute µs claims). | 👤 hardware · Claude |
-| Dec 3–8 | Video assets: `docs/images/architecture.svg`, title card, RPi4 B-roll. | Claude (svg) · 👤 B-roll |
+| Dec 3–8 | Architecture/title SVGs and crisp QEMU gallery captures are complete. RPi4 B-roll remains pending. | 👤 B-roll |
 | Dec 9 | **Feature freeze.** After this: bug fixes, docs and video only. | |
 | Dec 10 | Cold quickstart dry-run on a clean machine (README host-only path and QEMU path). | 👤 |
-| Dec 12 | Record and edit the video; upload public. | 👤 |
+| Dec 12 | Update the finished QEMU edit with RPi4 evidence if available; upload public. | 👤 |
 | Dec 13 | Final audit against this list; tag `v1.0.0`; re-verify the committed dossiers from the tag. | Claude |
 | Dec 14 | **Submit on Devpost.** | 👤 |
 | Dec 15 | Buffer for submission blockers only. | |

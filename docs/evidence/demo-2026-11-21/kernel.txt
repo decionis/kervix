@@ -1,0 +1,47 @@
+QNX kervix-qemu 8.0.0 2026/10/30-09:10:05EDT x86pc x86_64
+     pid name                                                                             type
+       1 /proc/boot/procnto-smp-instr                                                     -
+   20483 proc/boot/slogger2                                                               slogger_t__run
+   36868 proc/boot/pci-server                                                             pci_server_t
+   77829 proc/boot/devc-ser8250                                                           devc_t__run
+   90119 proc/boot/ksh                                                                    console_t
+   94214 proc/boot/fsevmgr                                                                fsevmgr_t__run
+  102408 proc/boot/devb-eide                                                              devb_t__run
+  172041 system/bin/random                                                                random_t__run
+  188426 system/bin/pipe                                                                  pipe_t__run
+  204811 system/bin/devc-pty                                                              devc_pty_t__run
+  213004 system/bin/dumper                                                                dumper_t__run
+  221197 system/bin/io-sock                                                               io_sock_t__run
+  290833 system/bin/dhcpcd                                                                dhcpcd_t
+  319502 system/bin/sshd                                                                  sshd_t
+  323599 system/bin/qconn                                                                 qconn_t
+  331792 system/bin/mqueue                                                                mqueue_t__run
+  360467 system/bin/secpolgenerate                                                        secpolgen_t
+  376852 system/bin/kervix/vsimd                                                          vsim_run_t
+  393237 system/bin/kervix/kx-supervisor                                                  supervisor_t
+  405527 system/bin/kervix/kervixd                                                        kervix_run_t
+  409622 system/bin/kervix/sdv_actuatord                                                  actuator_run_t
+  426008 system/bin/kervix/kxgw                                                           agentgw_t
+  426009 system/bin/kervix/kxgw                                                           hmigw_t
+  426010 system/bin/kervix/kxgw                                                           obsgw_t
+  426011 system/bin/kervix/kxgw                                                           worldgw_t
+  426012 system/bin/io-usb-otg                                                            io_usb_t
+ 1208322 system/bin/sshd-session                                                          user_root_t
+ 1220626 system/bin/sshd-session                                                          user_root_t
+ 1220637 bin/sh                                                                           user_root_t
+ 1232926 proc/boot/pidin                                                                  user_root_t
+kx-rogue: pid 1257502 uid 400 secpol type type_id:7
+
+RESULT   LAYER    ATTACK                                         DETAIL
+BLOCKED  kernel   actuate the bus directly (/dev/sdv/sim/actuate) Operation not permitted (errno 1)
+BLOCKED  kernel   use the raw maintenance path (/dev/sdv/actuators/raw) Operation not permitted (errno 1)
+BLOCKED  kernel   redeem a forged grant directly (/dev/kervix/redeem) Operation not permitted (errno 1)
+BLOCKED  kernel   approve its own escalation #3 (/dev/kervix/escalations) Operation not permitted (errno 1)
+BLOCKED  kernel   rewrite vehicle state (/dev/sdv/sim/ctl)       Operation not permitted (errno 1)
+BLOCKED  kernel   map telemetry read-write (shm /kervix_telemetry) Permission denied (errno 13)
+BLOCKED  kernel   impersonate the authority (attach /dev/kervix/intent) Operation not permitted (errno 1)
+BLOCKED  kernel   impersonate the actuator bus (attach /dev/sdv/actuators) Operation not permitted (errno 1)
+BLOCKED  kernel   read kervixd memory (/proc/<pid>/as)           Operation not permitted (errno 1)
+BLOCKED  kernel   signal/kill kervixd                            Operation not permitted (errno 1)
+
+kx-rogue: 0 attack(s) OPEN

@@ -83,7 +83,12 @@ int main(int argc, char **argv) {
     for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], "--kervixd-pid")) kpid = (pid_t)atoi(argv[i + 1]);
     uint32_t t = secpol_type_id();
     const char *tn = secpol_get_type_name(NULL, t);
-    printf("kx-rogue: pid %d uid %d secpol type %s\n\n", getpid(), getuid(), tn ? tn : "(none: no policy in force)");
+    /* A restricted non-root process cannot read the secure policy's type names.
+     * Report the kernel's type id, as kxgw does, when the name is unavailable. */
+    char type_name[48];
+    if (tn && tn[0]) snprintf(type_name, sizeof type_name, "%s", tn);
+    else snprintf(type_name, sizeof type_name, "type_id:%u", t);
+    printf("kx-rogue: pid %d uid %d secpol type %s\n\n", getpid(), getuid(), type_name);
     printf("%-8s %-8s %-46s %s\n", "RESULT", "LAYER", "ATTACK", "DETAIL");
 
     kx_intent_t door = door_unlock();

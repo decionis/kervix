@@ -8,7 +8,7 @@
 | Q2 | 2026-11-20 | **Solo developer** | Decided | Solo schedule and early cut triggers (04 §4, §8). MCP server, GPIO LED and WASM verify moved to Could. QNX Screen HMI cut. |
 | D1 | 2026-11-20 | Product **Kervix**, paths `/dev/kervix/*`, positioned as "Decionis-protocol compatible" | Default | — |
 | D2 | 2026-11-20 | **3D on-screen car model (Must) + optional WebXR (Could)** | Decided | The 3D twin is promoted to Must. It is built procedurally in React Three Fiber from primitives (no external asset, no IP risk, ~1 day). WebXR is a toggle via `@react-three/xr`, added only after freeze criteria are green. |
-| D3 | 2026-11-20 | **Register upstream in AAC:** chain relation `follows` and the effect-type namespace `vehicle.*` | Decided | New work item U1 (04 §5): spec registry text, `@decionis/verify` registry update with tests, release ≥ 0.6.0. Kervix pins that version. Disclosed on Devpost as an upstream contribution made during the hackathon. |
+| D3 | 2026-11-20 | **Register upstream in AAC:** chain relation `follows` and the effect-type namespace `vehicle.*` | Decided | New work item U1 (04 §5): spec registry text, `@decionis/verify` registry update with tests, release ≥ 0.6.1. Kervix pins that version. Disclosed on Devpost as an upstream contribution made during the hackathon. |
 | D4 | 2026-11-20 | Live agent uses Claude `claude-opus-5-5`. Scripted mode needs no key. | Decided (2026-11-21) | Runs on the Claude API or on **Claude on Microsoft Foundry** (the owner's credentials, from the git-ignored `secrets.platforms.env`). Server-side refusal fallbacks only on the Claude API. |
 | D5 | 2026-11-20 | Host stack is TypeScript (npm workspaces; see H4) | Default | — |
 | D6 | 2026-11-20 | License Apache-2.0 | Default | — |
@@ -35,7 +35,7 @@
 | **M4-RL** | 2026-11-21 | **Rate limits (F12) are constitution, not policy.** A GCRA token bucket per (caller's kernel-stamped secpol type, action), with per-action limits in the catalog, applied only where the policy would ALLOW or ESCALATE. kervixd limits `-L` types (default `agentgw_t`); an unresolvable name limits every type. Each decision records its bucket state; the verifier re-runs the C limiter (WASM) and chains the buckets. | Implemented | Putting limits in the signed policy would have changed the built-in policy's hash and orphaned every recorded dossier; a catalog limit also cannot be loosened by a policy author. Keying on `actor_id` was rejected: the agent chooses it. Also fixed while here: the verifier now accepts kervixd's fail-closed capacity overrides (grant table full, escalation queue full, no CSPRNG), which previously replayed as mismatches. |
 | **M4-XR** | 2026-11-21 | **WebXR view of the twin (X6), view-only.** `@react-three/xr`: `Enter VR` / `View in AR` appear only where the browser reports support; the twin (built in metres) stands life-size 4.2 m in front of you, with a beacon for the latest decision that differs by shape as well as colour (ring ALLOW, turning diamond waiting for the driver, cross BLOCK; red floor ring when the authority is offline). | Implemented | Approvals are deliberately not offered in XR: the driver card explains what is being approved and what it means, and a headset gesture should not replace that. WebXR needs a secure context (`https://` or `localhost`), so a Quest reaches the bridge via `adb reverse`. A Quest 3 emulator (`?xr=emulate`) is a separate chunk for development, fetched only with that parameter; the XR runtime adds about 150 kB to the twin chunk. Within the 3-hour box. |
 
-## Upstream AAC registry change (D3): proposed content
+## Upstream AAC registry change (D3): shipped in 0.6.1
 
 | Registry | Add | Semantics |
 |---|---|---|
@@ -46,4 +46,6 @@ Verifier change (`packages/dossier-verify/src/aac-v04.ts`):
 - Add `follows` to `REGISTRY.relation`.
 - Add namespace matching for `effect.type`, so a `vehicle.*` value is registered (no `info` finding).
 - Add tests for registered, unregistered and malformed `vehicle..x` values.
-- Add a CHANGELOG entry and release **0.6.0**.
+- Add a CHANGELOG entry and release **0.6.1**.
+
+U1 completed on 2026-11-21: Decionis#1752 is included in the published `@decionis/verify@0.6.1` release (Decionis#1762). Kervix pins it exactly in all three workspaces; conformance and the new signed demo dossier verify without informational findings. Version 0.6.0 was published before #1752 and does not contain this contribution.

@@ -7,5 +7,5 @@
   "description": "Offline verifier for Kervix dossiers (signed AAC draft-04 capsule ledgers), built on @decionis/verify",
   "bin": { "kervix-verify": "./kervix-verify.mjs" },
   "engines": { "node": ">=20" },
-  "dependencies": { "@decionis/verify": "0.5.0" }
+  "dependencies": { "@decionis/verify": "0.6.1" }
 }
