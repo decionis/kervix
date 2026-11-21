@@ -275,8 +275,9 @@ export function CarTwin({ tel, offline, verdict = null, pending = 0 }: Props) {
           <directionalLight position={[6, 9, 4]} intensity={2.6} castShadow shadow-mapSize={[2048, 2048]} />
           <directionalLight position={[-6, 4, -5]} intensity={1.2} />
           <Vehicle tel={tel} />
-          <ContactShadows position={[0, 0.01, 0]} opacity={0.35} scale={12} blur={1.2} far={3} resolution={512} />
           <IfInSessionMode deny={["immersive-vr", "immersive-ar"]}>
+            {/* The offscreen contact-shadow pass must not render through an XR camera. */}
+            <ContactShadows position={[0, 0.01, 0]} opacity={0.35} scale={12} blur={1.2} far={3} resolution={512} />
             <OrbitControls enablePan={false} minDistance={5} maxDistance={14} maxPolarAngle={Math.PI / 2.1} target={[0, 0.7, 0]} />
           </IfInSessionMode>
           <IfInSessionMode>

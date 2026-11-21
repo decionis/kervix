@@ -48,7 +48,8 @@
     "conformance": "passed with published 0.6.1",
     "typecheck": "passed under Node 22",
     "dashboard_build": "passed",
-    "host_tests": "passed"
+    "host_tests": "passed",
+    "webxr": "Corrected immersive contact-shadow rendering checked in Meta Quest 3 emulator; physical headset not tested"
   },
   "gallery": {
     "dashboard.png": "ce1212708954f1e2c85eb809ce244167a52309fbee90890f7bb809fe7019dd8b",
@@ -58,7 +59,7 @@
     "twin-ota-approved.png": "1461946ba9064c9ca2270cc764e41c2cfa96122b51ce7e9e161371f21bac6f79",
     "ledger-verified.png": "9a56c9c27e9ffce45ff3c96fa76db0bc5423d1a5b7546af794daf0e610cbfbae",
     "ledger-tampered.png": "b4c7580f25d599f39c8aa3ea94767e2d7f4214e564111eecda4451e7ffc5edcf",
-    "twin-webxr-emulated.png": "0509460dfeb83754f404dfb02bb47ee3c51130f78a96a0d194c12fe71b6d7c76"
+    "twin-webxr-emulated.png": "856d427cfaa153761f9ea19224bbf4fb2e381c63be723433de7bdfca7fe73047"
   },
   "pending": [
     "GitHub Support purge of PR #34 retained ref (removal ticket created after owner confirmed key rotation)",

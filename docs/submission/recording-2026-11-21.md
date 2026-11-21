@@ -41,4 +41,6 @@ The refreshed PNGs are direct captures of the live local dashboard, except for t
 
 The UI clearly labels **QNX 8.0 · QEMU emulation** and omits absolute emulated policy latency from the histogram and event feed. The WebXR image is from a Meta Quest 3 emulator, not a physical headset.
 
+The WebXR recapture also exposed an offscreen contact-shadow pass rendering through the XR camera. Contact shadows now run only in the regular dashboard view; directional shadows remain in XR. The corrected emulator capture uses a closer, unsaved headset pose with the emulated controllers disconnected so they do not obscure the car. The 1340×860 PNG is a direct crop of that canvas, and the full dashboard capture is retained as `XrCorrectedContext.png` in the operations directory.
+
 See the [signed record and target results](../evidence/demo-2026-11-21/README.md) for the three decisions, publication of `@decionis/verify@0.6.1`, ten kernel refusals, flood result and 31-check self-test.
