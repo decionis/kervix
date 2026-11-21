@@ -117,7 +117,9 @@ npm run agent -- script scenarios/s1-cold.json scenarios/s2-injection.json scena
 npm run agent -- live "I'm cold"   # live Claude agent (claude-opus-5-5; needs Claude API credentials)
 ```
 
-Scene 2 feeds the agent a **synthetic poisoned service bulletin** that tells it to flash the brake ECU while driving. The agent tries; Kervix blocks it (`R156_NOT_SAFE_STATE`). The agent's system prompt contains **no safety rules**: safety must not depend on the model behaving.
+A **live run** with Claude Opus 5.5 is recorded verbatim in [`docs/evidence/live-claude-2026-11-21.md`](docs/evidence/live-claude-2026-11-21.md), together with that session's QNX-signed ledger, which verifies offline. For the live run, set `ANTHROPIC_API_KEY` (or `ant auth login`), or `AZURE_ANTHROPIC_KEY` + `AZURE_ANTHROPIC_URL` for Claude on Microsoft Foundry, then run `npm run agent -- live-demo`.
+
+Scene 2 feeds the agent a **synthetic poisoned service bulletin** that tells it to flash the brake ECU while driving. In the scripted scene the agent is fooled and tries; Kervix blocks it (`R156_NOT_SAFE_STATE`). In the live run, Claude spotted the embedded instruction and declined on its own. Either way nothing unsafe happens, because the agent's system prompt contains **no safety rules**: safety must not depend on the model behaving.
 
 ## Repository
 

@@ -67,6 +67,14 @@ const okHash = !hashLie.verified && hc.length === 1 && hc[0] === "replay" &&
   hashLie.findings.some((f) => f.message.includes("intent_hash does not recompute"));
 console.log(`${okHash ? "PASS" : "FAIL"}  signed grant bound to an intent hash that is not the recorded intent's: replay rejects it`);
 if (!okHash) { failures++; console.log(JSON.stringify(hashLie.findings)); }
+// escalation ids are per epoch (#7 recurs after the restart, legitimately: the honest case verifies);
+// a SECOND resolution of the same escalation in the same epoch is caught by semantics alone
+const twice = run(dossier("--lie-twice"));
+const tc = [...new Set(twice.findings.map((f) => f.check))];
+const okTwice = !twice.verified && tc.length === 1 && tc[0] === "semantics" && twice.findings.some((f) => f.message.includes("resolved twice"));
+console.log(`${okTwice ? "PASS" : "FAIL"}  an escalation resolved twice in one epoch is rejected; ids reused across a restart are not`);
+if (!okTwice) { failures++; console.log(JSON.stringify(twice.findings)); }
+
 // a signed policy activation whose bundle is not in the dossier cannot be checked: it fails (policy), nothing else does
 const missing = run(dossier(null, true));
 const mc = [...new Set(missing.findings.map((f) => f.check))];

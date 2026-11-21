@@ -10,7 +10,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { Bridge } from "../../bridge/src/bridge.ts";
 import { FakeTarget } from "../../bridge/test/fake-target.ts";
 import catalog from "../../shared/catalog.gen.json" with { type: "json" };
-import { LiveAgent, MODEL, SYSTEM_PROMPT, type StreamingClient } from "../src/live.ts";
+import { LiveAgent, MODEL, SYSTEM_PROMPT, createClient, type StreamingClient } from "../src/live.ts";
 import { loadScenario, runScenario } from "../src/scripted.ts";
 import { TOOL_TO_ACTION, bridgeApi, runTool, toolDefinitions, validateInput, type BridgeApi } from "../src/tools.ts";
 
@@ -144,4 +144,15 @@ test("live loop: request shape, tool round trip through Kervix, BLOCK returned a
   assert.equal((second[second.length - 2].content as { type: string }[])[0].type, "thinking");
   assert.equal(agent.messages.length, 4);
   await api.sim("scenario park");
+});
+
+test("provider: Claude API by default, Microsoft Foundry when its credentials are set; no server-side fallbacks on Foundry", async () => {
+  assert.equal(createClient({}).provider, "anthropic");
+  assert.equal(createClient({ AZURE_ANTHROPIC_KEY: "k", AZURE_ANTHROPIC_URL: "https://r.example/anthropic/v1" }).provider, "foundry");
+  const client = fakeClient([{ stop_reason: "end_turn", content: [{ type: "text", text: "ok", citations: null } as Anthropic.Beta.BetaTextBlock] }]);
+  const agent = new LiveAgent({ api, client, provider: "foundry", out: () => {} });
+  await agent.say("hello");
+  assert.equal(client.requests[0].fallbacks, undefined);
+  assert.equal(client.requests[0].betas, undefined);
+  assert.deepEqual(client.requests[0].thinking, { type: "adaptive", display: "summarized" });
 });

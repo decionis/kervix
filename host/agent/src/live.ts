@@ -4,6 +4,7 @@
 // (shown on the dashboard), explicit effort, strict tools, server-side refusal
 // fallbacks. Every step is mirrored to the dashboard feed via /api/note.
 import Anthropic from "@anthropic-ai/sdk";
+import AnthropicFoundry from "@anthropic-ai/foundry-sdk";
 
 import { runTool, toolDefinitions, type BridgeApi } from "./tools.ts";
 
@@ -32,9 +33,23 @@ export type StreamingClient = {
   };
 };
 
+export type Provider = "anthropic" | "foundry";
+
+/** Claude API by default; Claude on Microsoft Foundry when AZURE_ANTHROPIC_KEY + AZURE_ANTHROPIC_URL are set
+ *  (URL like https://<resource>.../anthropic/v1). Server-side refusal fallbacks exist only on the Claude API. */
+export function createClient(env = process.env): { client: StreamingClient; provider: Provider } {
+  if (env.AZURE_ANTHROPIC_KEY && env.AZURE_ANTHROPIC_URL) {
+    const baseURL = env.AZURE_ANTHROPIC_URL.replace(/\/v1\/?$/, "/");
+    return { client: new AnthropicFoundry({ apiKey: env.AZURE_ANTHROPIC_KEY, baseURL }) as unknown as StreamingClient, provider: "foundry" };
+  }
+  return { client: new Anthropic() as unknown as StreamingClient, provider: "anthropic" };
+}
+
 export type LiveOptions = {
   api: BridgeApi;
   client?: StreamingClient;
+  provider?: Provider;
+  model?: string;
   actor?: string;
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
   out?: (s: string) => void;
@@ -44,6 +59,8 @@ export class LiveAgent {
   readonly messages: Anthropic.Beta.BetaMessageParam[] = [];
   private readonly api: BridgeApi;
   private readonly client: StreamingClient;
+  readonly provider: Provider;
+  readonly model: string;
   private readonly actor: string;
   private readonly effort: NonNullable<LiveOptions["effort"]>;
   private readonly out: (s: string) => void;
@@ -51,14 +68,22 @@ export class LiveAgent {
 
   constructor(opts: LiveOptions) {
     this.api = opts.api;
-    this.client = opts.client ?? (new Anthropic() as unknown as StreamingClient);
+    if (opts.client) {
+      this.client = opts.client;
+      this.provider = opts.provider ?? "anthropic";
+    } else {
+      const c = createClient();
+      this.client = c.client;
+      this.provider = c.provider;
+    }
+    this.model = opts.model ?? process.env.KX_MODEL ?? MODEL;
     this.actor = opts.actor ?? "agent:cabin-copilot";
     this.effort = opts.effort ?? "medium";
     this.out = opts.out ?? ((s) => process.stdout.write(s));
   }
 
   private note(body: Record<string, unknown>): Promise<void> {
-    return this.api.note({ source: "agent", mode: "live", model: MODEL, ...body });
+    return this.api.note({ source: "agent", mode: "live", model: this.model, ...body });
   }
 
   /** One driver utterance -> the agent's turn(s) until it answers. Returns the final text. */
@@ -68,18 +93,21 @@ export class LiveAgent {
     let jsonRetries = 0;
     let finalText = "";
     for (let step = 0; step < 12; step++) {
-      const stream = this.client.beta.messages.stream({
-        model: MODEL,
+      const params: Anthropic.Beta.Messages.MessageCreateParamsStreaming = {
+        model: this.model,
         max_tokens: 64000,
         system: SYSTEM_PROMPT,
         tools: this.tools,
         messages: this.messages,
         thinking: { type: "adaptive", display: "summarized" },
         output_config: { effort: this.effort },
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
         stream: true,
-      });
+      };
+      if (this.provider === "anthropic") {        // server-side refusal fallbacks: Claude API only
+        params.betas = ["server-side-fallback-2026-07-01"];
+        params.fallbacks = "default";
+      }
+      const stream = this.client.beta.messages.stream(params);
       stream.on("text", (d) => this.out(d));
       let msg: Anthropic.Beta.BetaMessage;
       try {
