@@ -18,7 +18,7 @@ AI agents *propose* vehicle actions. Kervix decides on live vehicle state whethe
 
 *The dashboard, live against QNX 8.0 in QEMU. The agent asked to flash the brake ECU; Kervix escalated it to the driver. Every verdict in the feed was decided by `kervixd` on QNX.*
 
-**Recorded demo:** [21 November recording and evidence](docs/submission/recording-2026-11-21.md), following the ten-scene shot list. QEMU emulation is labelled throughout; hardware latency and a physical headset are not claimed.
+**Recorded demo:** [Watch the 2:50 QEMU edition on YouTube](https://youtu.be/QaLS1neHT2s) · [Devpost project](https://devpost.com/software/kervix) · [21 November recording and evidence](docs/submission/recording-2026-11-21.md). The ten-scene demo includes male narration, captions and real QNX decisions. QEMU emulation is labelled throughout; hardware latency and a physical headset are not claimed.
 
 | The vehicle, as QNX reports it | After the driver approves an OTA update |
 |---|---|

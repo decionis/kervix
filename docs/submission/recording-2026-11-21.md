@@ -1,6 +1,6 @@
 # Kervix demo recording — 21 November 2026
 
-The **2:50 QEMU edition** follows the ten time ranges in [video-shot-list.md](video-shot-list.md). It uses the real dashboard and QNX target, male synthetic narration at conversational pace, burned-in captions, and no music. Raspberry Pi footage, physical-headset testing and public YouTube upload remain pending.
+The **2:50 QEMU edition** follows the ten time ranges in [video-shot-list.md](video-shot-list.md). It uses the real dashboard and QNX target, male synthetic narration at conversational pace, burned-in captions, and no music. [Watch the public video on YouTube](https://youtu.be/QaLS1neHT2s), published on the Decionis channel on 21 November with an English (United Kingdom) subtitle track and the title-card thumbnail. Raspberry Pi footage and physical-headset testing remain pending.
 
 ## Delivery
 

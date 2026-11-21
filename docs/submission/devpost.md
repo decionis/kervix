@@ -1,11 +1,15 @@
 # Devpost submission text: Kervix
 
-> Paste-ready text for qnx.devpost.com. The two extra fields (build and run instructions; how the project meets the technology requirement) are in [`additional-details.md`](additional-details.md). **Category: Automotive & Mobility.** Also entered for *Best Use of QNX-specific Technologies* and *Best Codelab*.
+> Paste-ready text for qnx.devpost.com. The two extra fields (build and run instructions; how the project meets the technology requirement) are in [`additional-details.md`](https://github.com/decionis/kervix/blob/master/docs/submission/additional-details.md). **Category: Automotive & Mobility.** Also entered for *Best Use of QNX-specific Technologies* and *Best Codelab*.
 > Every number below links to evidence in the repository. QEMU numbers are labelled as emulated; the Raspberry Pi 4 measurements replace them once the board arrives (Dec 3).
 
 **Tagline:** *AI agents propose. QNX decides. Every decision is signed and can be replayed.*
 
 ---
+
+## Demo
+
+[Watch the 2:50 QEMU demo on YouTube](https://youtu.be/QaLS1neHT2s). The recording shows real QNX decisions, driver approval, ten kernel-refused bypass attempts, recovery, and signed evidence verification. It uses a simulated vehicle, synthetic male narration and captions. Raspberry Pi measurements remain pending.
 
 ## Inspiration
 
@@ -15,7 +19,7 @@ The question I wanted to answer: **what does it take to let an AI agent act in a
 
 Three requirements fall out of that question:
 - The agent must not be able to reach an actuator by any path other than asking.
-- Every request must be decided on the *live* vehicle state, in microseconds, by something the agent cannot influence.
+- Every request must be decided deterministically on the *live* vehicle state, by something the agent cannot influence.
 - Afterwards anyone should be able to check, offline, what was decided and why.
 
 Regulation points the same way: UN R156 for software updates, R155 for cybersecurity, the EU AI Act for human oversight.
@@ -37,7 +41,7 @@ Underneath that:
 - **Rate limits the agent can't talk its way around.** Each action has a token bucket per *kernel-stamped* caller type (not the name the agent gives itself), so an agent can't hammer the windows or bury the driver in approval requests. Each limited decision records its bucket, and the verifier re-runs the limiter.
 - **Replay proves the decision followed the policy.** `kervix-verify` checks a ledger offline: signatures, chain, semantics. It then **re-runs every decision with the vehicle's own C policy core compiled to WebAssembly**. A signature proves *who* recorded a decision; replay proves the decision *follows from the policy*. A test dossier containing a perfectly signed lie (an OTA flash at 110 km/h recorded as ALLOW) passes every other check and is caught only by replay.
 - **Policies are signed updates.** A policy is YAML, compiled into a canonical body that the vehicle's C code loads, signed by an author **and a different approver**, and activated over a channel only the workshop type can reach. Each decision is replayed under the exact policy it was made with.
-- **The dashboard** shows a procedural 3D twin that renders *what the vehicle reports*, never what was asked. Next to it: the driver's approval card, a live decision feed with the agent's reasoning summaries, a latency histogram, and a **ledger explorer with a Verify button**. Edit one record by a few milliseconds and verification fails at exactly that record.
+- **The dashboard** shows a procedural 3D twin that renders *what the vehicle reports*, never what was asked. Next to it: the driver's approval card, a live decision feed with the agent's reasoning summaries, and a **ledger explorer with a Verify button**. The QEMU view omits absolute latency claims. Edit one record by a few milliseconds and verification fails at exactly that record.
 
 ## How I built it
 
@@ -99,11 +103,11 @@ Underneath that:
 
 ## Codelab
 
-**[Lock it down: kernel-enforced least privilege for a QNX 8.0 resource manager](../../codelab/README.md)** is a 45-minute, step-by-step tutorial on a 120-line car-lock service. Readers type its channels, drop its privileges, watch the kernel refuse even root, read the refusal log, and learn the path to a secure release image. `make codelab` runs every step on QNX 8.0 and checks it (8/8).
+**[Lock it down: kernel-enforced least privilege for a QNX 8.0 resource manager](https://github.com/decionis/kervix/blob/master/codelab/README.md)** is a 45-minute, step-by-step tutorial on a 120-line car-lock service. Readers type its channels, drop its privileges, watch the kernel refuse even root, read the refusal log, and learn the path to a secure release image. `make codelab` runs every step on QNX 8.0 and checks it (8/8).
 
 ## Upstream contribution
 
-I registered the AAC `follows` chain relation and the `vehicle.*` effect-type namespace in the Agent Action Capsule verifier ([decionis/Decionis#1752](https://github.com/decionis/Decionis/pull/1752), merged during the hackathon). It ships in **`@decionis/verify` 0.6.1**, published through [Decionis#1762](https://github.com/decionis/Decionis/pull/1762) and pinned exactly in all three Kervix verifier workspaces. The [new recorded dossier](../evidence/demo-2026-11-21/README.md) verifies seven capsules and replays all three decisions with zero findings.
+I registered the AAC `follows` chain relation and the `vehicle.*` effect-type namespace in the Agent Action Capsule verifier ([decionis/Decionis#1752](https://github.com/decionis/Decionis/pull/1752), merged during the hackathon). It ships in **`@decionis/verify` 0.6.1**, published through [Decionis#1762](https://github.com/decionis/Decionis/pull/1762) and pinned exactly in all three Kervix verifier workspaces. The [new recorded dossier](https://github.com/decionis/kervix/blob/master/docs/evidence/demo-2026-11-21/README.md) verifies seven capsules and replays all three decisions with zero findings.
 
 ## What's next
 
@@ -120,11 +124,11 @@ I registered the AAC `follows` chain relation and the `vehicle.*` effect-type na
 ## Try it (for judges)
 
 - **Without QNX** (any machine with Node ≥ 22.18): `npm ci && make test`, then `node host/verify/kervix-verify.mjs tests/fixtures/dossier-qnx-qemu-2026-11-20`. This verifies a ledger signed on QNX, offline.
-- **With QNX SDP 8.0:** `make target-selftest` boots QNX in QEMU, runs all 31 checks and verifies the run's ledger. `make codelab` runs the tutorial. See the [README](../../README.md#build-and-run).
-- **Evidence:** [selftest tables](../evidence/), [recorded benchmark](../evidence/demo-2026-11-21/benchmark.txt), [live Claude transcript and its signed ledger](../evidence/live-claude-2026-11-21.md), [screenshots](../images/).
+- **With QNX SDP 8.0:** `make target-selftest` boots QNX in QEMU, runs all 31 checks and verifies the run's ledger. `make codelab` runs the tutorial. See the [README](https://github.com/decionis/kervix/blob/master/README.md#build-and-run).
+- **Evidence:** [selftest tables](https://github.com/decionis/kervix/tree/master/docs/evidence), [recorded benchmark](https://github.com/decionis/kervix/blob/master/docs/evidence/demo-2026-11-21/benchmark.txt), [live Claude transcript and its signed ledger](https://github.com/decionis/kervix/blob/master/docs/evidence/live-claude-2026-11-21.md), [screenshots](https://github.com/decionis/kervix/tree/master/docs/images).
 
 ## Disclosures
 
 - **Built during the hackathon window**, starting Nov 20, 2026, by one developer, with Claude Code and Codex as coding assistants. The full history is in the repository: after the first two commits, every change landed through a pull request (34 merged by Nov 21).
 - **Pre-existing dependency:** `@decionis/verify` (Apache-2.0), an open-source AAC verifier by the same author that predates the hackathon. Kervix uses it unchanged. The registry contribution above is the only change made to it during the hackathon.
-- Third-party software and licences: [THIRD_PARTY.md](../../THIRD_PARTY.md). Nothing from the QNX SDP is redistributed.
+- Third-party software and licences: [THIRD_PARTY.md](https://github.com/decionis/kervix/blob/master/THIRD_PARTY.md). Nothing from the QNX SDP is redistributed.
